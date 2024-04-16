@@ -107,7 +107,7 @@ Modulos <- function(Month, Year, City) {
     rchivos <- list.files(temp_folder,full.names = TRUE)[2]
     csv_folder <- file.path(rchivos, "CSV")
     archivos_csv <- list.files(csv_folder, full.names = TRUE)
-
+    print(archivos_csv)
 
 
   # Función para detectar el delimitador
@@ -774,6 +774,7 @@ cat("Módulo 6 original ✓\n")
 
 return(invisible(Resultados))
 }
+
 
 
 
