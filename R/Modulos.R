@@ -776,7 +776,6 @@ return(invisible(Resultados))
 }
 
 
-x=Fun(Month = 1, Year = 2022, City = "Cali")
 
 
 
