@@ -94,17 +94,14 @@ Modulos <- function(Month, Year, City) {
       }
     }
 
-    # Generar la URL de descarga
-    url <- generate_download_url(Month, Year)
-
     # Descargar y extraer el archivo ZIP
     temp_zip <- tempfile(fileext = ".zip")
     download.file(url, temp_zip, timeout = 1000)
     temp_folder <- tempdir()
     unzip(temp_zip, exdir = temp_folder)
 
-    # encuentra la ruta
     archivos_csv <- list.files(temp_folder, recursive = TRUE, pattern = "\\.csv$", full.names = TRUE)
+    print(archivos_csv)
 
   # Función para detectar el delimitador
   detect_delimiter <- function(file_path) {
