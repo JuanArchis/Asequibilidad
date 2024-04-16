@@ -38,11 +38,81 @@ unzip(temp_zip, exdir = temp_folder)
 
 # Encuentra la ruta de la carpeta CSV
 archivos_csv <- list.files(temp_folder, recursive = TRUE, pattern = "\\.csv$", full.names = TRUE)
-
-# Imprimir la lista de archivos CSV encontrados
 print(archivos_csv)
 
+
+# Función para detectar el delimitador
+detect_delimiter <- function(file_path) {
+  first_lines <- readLines(file_path, n = 5)
+  delimiter <- ifelse(sum(grepl(",", first_lines)) > sum(grepl(";", first_lines)), ",", ";")
+  return(delimiter)
 }
+
+
+# Modificación en el bucle para asignar los objetos al entorno creado
+for (i in seq_along(archivos_csv)) {
+  delimitador <- detect_delimiter(archivos_csv[i])
+  nombres_archivos <- basename(archivos_csv[i])
+  # Limpiar el nombre del archivo eliminando caracteres no ASCII
+  nombre_limpiado <- iconv(nombres_archivos, "UTF-8", "ASCII", sub = " ")
+  # Reemplazar los espacios por guiones bajos
+  nombre_limpiado <- gsub(" ", "_", nombre_limpiado)
+  assign(nombre_limpiado, read.csv(archivos_csv[i], sep = delimitador), envir = get(envr_name, envir = data_GEIH))
+}
+
+
+#------------------------------------------------#
+#   Sub 0.2: selecionar y nombrar datos a usar   #
+#------------------------------------------------#
+
+# Patrones de nombres a mantener
+patrones_a_mantener <- c("Ocupados", "No ocupados", "Otros ingresos e impuestos", "Datos del hogar y la vivienda", "Caracteristicas generales, seguridad social en salud y educacion.")
+
+# Nombres de los dataframes en el entorno actual
+nombres_dataframes <- names(get(envr_name, envir = data_GEIH))
+
+# Función para calcular la similitud entre dos cadenas de caracteres
+similarity <- function(pattern, name) {
+  max_sim <- max(adist(pattern, name))
+  return(1 - max_sim / max(nchar(pattern), nchar(name)))
+}
+
+# Encontrar los nombres más cercanos a los patrones
+nombres_mas_cercanos <- lapply(patrones_a_mantener, function(pattern) {
+  similarities <- sapply(nombres_dataframes, similarity, pattern)
+  closest_name <- nombres_dataframes[which.max(similarities)]
+  return(closest_name)
+})
+
+# Eliminar los objetos que no coinciden con los patrones
+nombres_a_eliminar <- setdiff(nombres_dataframes, unlist(nombres_mas_cercanos))
+for (nombre in nombres_a_eliminar) {
+  rm(list = nombre, envir = get(envr_name, envir = data_GEIH))
+}
+
+
+# Función para detectar el delimitador
+  detect_delimiter <- function(file_path) {
+    first_lines <- readLines(file_path, n = 5)
+    delimiter <- ifelse(sum(grepl(",", first_lines)) > sum(grepl(";", first_lines)), ",", ";")
+    return(delimiter)
+  }
+
+
+    # Modificación en el bucle para asignar los objetos al entorno creado
+    for (i in seq_along(archivos_csv)) {
+      delimitador <- detect_delimiter(archivos_csv[i])
+      nombres_archivos <- basename(archivos_csv[i])
+      # Limpiar el nombre del archivo eliminando caracteres no ASCII
+      nombre_limpiado <- iconv(nombres_archivos, "UTF-8", "ASCII", sub = " ")
+      # Reemplazar los espacios por guiones bajos
+      nombre_limpiado <- gsub(" ", "_", nombre_limpiado)
+      assign(nombre_limpiado, read.csv(archivos_csv[i], sep = delimitador), envir = get(envr_name, envir = data_GEIH))
+    }
+}
+
+
+
 
 
 
