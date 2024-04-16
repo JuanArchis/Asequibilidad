@@ -110,7 +110,7 @@ for (nombre in nombres_a_eliminar) {
     }
 }
 
-
+Prueba(Month = 1,Year=2022,City="Cali")
 
 
 
