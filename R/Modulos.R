@@ -94,6 +94,9 @@ Modulos <- function(Month, Year, City) {
       }
     }
 
+
+    url <- generate_download_url(Month, Year)
+
     # Descargar y extraer el archivo ZIP
     temp_zip <- tempfile(fileext = ".zip")
     download.file(url, temp_zip, timeout = 1000)
