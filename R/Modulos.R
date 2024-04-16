@@ -2,7 +2,7 @@
 #           Definición de la función             #
 #------------------------------------------------#
 
-Fun <- function(Month, Year, City) {
+Modulos <- function(Month, Year, City) {
 
 #-------------------------------------------------------------------#
 #    Modulo 0: Librerias, val de parámetros y Carga de datos        #
@@ -74,6 +74,9 @@ Fun <- function(Month, Year, City) {
   data_GEIH <- crear_o_reusar_entorno("data_GEIH");envr_name <- paste0("GEIH_", Month, "_", Year, "_", City)
 
 # Validar si existe el entorno y si no, descargar datos
+
+  suppressWarnings({
+
   if (!exists(envr_name, envir = data_GEIH)) {
 
     assign(envr_name, new.env(parent = emptyenv()), envir = data_GEIH)
@@ -169,7 +172,7 @@ Fun <- function(Month, Year, City) {
   Otros_ingresos_e_impuestos = get(envr_name, envir = data_GEIH)$Otros_ingresos_e_impuestos.csv
 
   Caracteristicas_generales =get(envr_name, envir = data_GEIH)$"Caracter_sticas_generales,_seguridad_social_en_salud_y_educaci_n.csv"
-
+  })
 
 
   cat("Módulo 1 original ✓\n")
@@ -419,7 +422,7 @@ cat("Módulo 4 original ✓\n")
 #-----------------------------#
 
 
-
+invisible(capture.output({
 #----------------------------------------------------------------------------------#
 #    Modulo 3: Reatroalimentación con el paquete Foodprice                        #
 #----------------------------------------------------------------------------------#
@@ -429,38 +432,351 @@ cat("Módulo 4 original ✓\n")
 #-----------------------------#
 
 
+Data_mes_año=Foodprice::DataCol(Month = Month, Year = Year, City = City)
+
+model_household <- data.frame(
+  Household = c(1, 1, 1),
+  Person = c(1, 2, 3),
+  Sex = c(0, 1, 1),
+  Demo_Group = c("31 a 50 años", "31 a 50 años", "9 a 13 años")
+)
+
+modelo_1=Foodprice::CoCA(data=Data_mes_año,EER = EER)$cost
+modelo_2=Foodprice::CoNA(data=Data_mes_año,EER_LL=EER_LL,UL=UL)$cost
+modelo_3=Foodprice::CoRD(data = Data_mes_año,diverse = diverse,serv = serv)$cost
+
+}))
+
+#-----------------------------#
+# Modelo:COCA- costo hogar Rep#
+#-----------------------------#
+
+
+
+model_dieta_1 = merge(model_household, modelo_1[c("Demo_Group", "Sex", "cost_day")],
+                      by = c("Demo_Group", "Sex"),
+                      all.x = TRUE, all.y = FALSE)
+
+model_dieta_1$hogar_total = sum(as.numeric(model_dieta_1$cost_day))
+model_dieta_1$per_capita = model_dieta_1$hogar_total/nrow(model_dieta_1)
+
+
+
+#-----------------------------#
+# Modelo:CONA- costo hogar Rep#
+#-----------------------------#
+
+
+
+
+model_dieta_2 = merge(model_household, modelo_2[c("Demo_Group", "Sex", "cost_day")],
+                      by = c("Demo_Group", "Sex"),
+                      all.x = TRUE, all.y = FALSE)
+
+model_dieta_2$hogar_total = sum(as.numeric(model_dieta_2$cost_day))
+model_dieta_2$per_capita = model_dieta_2$hogar_total/nrow(model_dieta_2)
+
+
+
+#-----------------------------#
+# Modelo:CORD- costo hogar Rep#
+#-----------------------------#
+
+model_household_3 <- data.frame(
+  Household = c(1, 1, 1),
+  Person = c(1, 2, 3),
+  Sex = c(0, 1, 1),
+  Demo_Group = c("31-50 años", "31-50 años", "9-13 años")
+)
+
+model_dieta_3 = merge(model_household_3, modelo_3[c("Demo_Group", "Sex", "cost_day")],
+                      by = c("Demo_Group", "Sex"),
+                      all.x = TRUE, all.y = FALSE)
+
+model_dieta_3$hogar_total = sum(as.numeric(model_dieta_3$cost_day))
+model_dieta_3$per_capita = model_dieta_3$hogar_total/nrow(model_dieta_3)
+
+#-------------------------------#
+# Calcular costo anual y mensual #
+#--------------------------------#
+
+
+
+model_dieta_1$per_capita_year = model_dieta_1$per_capita*365
+model_dieta_2$per_capita_year = model_dieta_2$per_capita*365
+model_dieta_3$per_capita_year = model_dieta_3$per_capita*365
+
+
+model_dieta_1$per_capita_month = model_dieta_1$per_capita*30
+model_dieta_2$per_capita_month = model_dieta_2$per_capita*30
+model_dieta_3$per_capita_month = model_dieta_3$per_capita*30
+
+cat("Módulo 5 original ✓\n")
+
+
+#-----------------------------#
+# FIN    DEL MÓDULO 5 ORGINAL # FALTA SIMPLIFICAR Y GENERALIZAR
+#-----------------------------#
+
+#----------------------------------------------------------------------------------#
+#    Modulo 4: Cálculo de indicadores de asequibilida                              #
+#----------------------------------------------------------------------------------#
+
+#-----------------------------#
+# INICIO DEL MÓDULO 6 ORGINAL #
+#-----------------------------#
+
+# Calcular la proporción para cada decil
+dataset_def_deciles$per_capita_year = dataset_def_deciles$ingreso_alimentos_per_capita*12
+
+
+outcome_1_list = list()
+length(outcome_1_list) = 10
+
+for (j in 1:length(outcome_1_list)) {
+  z = as.numeric(levels(as.factor(model_dieta_1$per_capita_year)))
+  df_y = dataset_def_deciles %>% filter(deciles %in% deciles_grupos[j])
+
+  #crear dummy
+  df_y$dummy = NA
+
+  for (k in 1:nrow(df_y)) {
+
+    if (df_y$per_capita_year[k] < z) {
+      df_y$dummy[k] = 1
+    } else {
+      df_y$dummy[k] = 0
+    }
+
+  }
+
+
+
+  df_z = df_y %>% filter(dummy %in% 1)
+
+  df_z$brecha_rel =  (z - df_z$per_capita_year)/z
+
+  # calcular el cuadrado de la brecha relativa
+  df_z$brecha_rel_sqr = df_z$brecha_rel^2
+
+  # calculo de indices
+  N = nrow(df_y)
+
+  df_w = as.data.frame(matrix(ncol=4))
+
+
+  colnames(df_w) = c("deciles", "rate", "gap", "severity")
+
+  df_w$deciles = deciles_grupos[j]
+
+  df_w$rate = (nrow(df_z)/N)*100
+
+  df_w$gap = sum(df_z$brecha_rel)/N
+
+  df_w$severity = sum(df_z$brecha_rel_sqr)/N
+
+  outcome_1_list[[j]] = df_w
+
+  names(outcome_1_list)[j] = deciles_grupos[j]
 
 }
 
 
 
 
+# Cálculo para la dieta nutritiva
+# Calcular la proporción para cada decil
+dataset_def_deciles$per_capita_year = dataset_def_deciles$ingreso_alimentos_per_capita*12
+
+outcome_2_list = list()
+length(outcome_2_list) = 10
+
+for (j in 1:length(outcome_2_list)) {
+  z = as.numeric(levels(as.factor(model_dieta_2$per_capita_year)))
+  df_y = dataset_def_deciles %>% filter(deciles %in% deciles_grupos[j])
+
+  #crear dummy
+  df_y$dummy = NA
+
+  for (k in 1:nrow(df_y)) {
+
+    if (df_y$per_capita_year[k] < z) {
+      df_y$dummy[k] = 1
+    } else {
+      df_y$dummy[k] = 0
+    }
+
+  }
 
 
 
-Fun(Month = 1, Year = 2022, City = "Cali")
+  df_z = df_y %>% filter(dummy %in% 1)
+
+  df_z$brecha_rel =  (z - df_z$per_capita_year)/z
+
+  # calcular el cuadrado de la brecha relativa
+  df_z$brecha_rel_sqr = df_z$brecha_rel^2
+
+  # calculo de indices
+  N = nrow(df_y)
+
+  df_w = as.data.frame(matrix(ncol=4))
+
+
+  colnames(df_w) = c("deciles", "rate", "gap", "severity")
+
+  df_w$deciles = deciles_grupos[j]
+
+  df_w$rate = (nrow(df_z)/N)*100
+
+  df_w$gap = sum(df_z$brecha_rel)/N
+
+  df_w$severity = sum(df_z$brecha_rel_sqr)/N
+
+  outcome_2_list[[j]] = df_w
+
+  names(outcome_2_list)[j] = deciles_grupos[j]
+
+}
 
 
 
+# Cálculo para la dieta saludable
+# Calcular la proporción para cada decil
+dataset_def_deciles$per_capita_year = dataset_def_deciles$ingreso_alimentos_per_capita*12
 
 
-Month = 1
-Year = 2022
-City = "Cali"
+outcome_3_list = list()
+length(outcome_3_list) = 10
+
+for (j in 1:length(outcome_3_list)) {
+  z = as.numeric(levels(as.factor(model_dieta_3$per_capita_year)))
+  df_y = dataset_def_deciles %>% filter(deciles %in% deciles_grupos[j])
+
+  #crear dummy
+  df_y$dummy = NA
+
+  for (k in 1:nrow(df_y)) {
+
+    if (df_y$per_capita_year[k] < z) {
+      df_y$dummy[k] = 1
+    } else {
+      df_y$dummy[k] = 0
+    }
+
+  }
 
 
 
-Data_mes_año=Foodprice::DataCol(Month = Month, Year = Year, City = City)
+  df_z = df_y %>% filter(dummy %in% 1)
+
+  df_z$brecha_rel =  (z - df_z$per_capita_year)/z
+
+  # calcular el cuadrado de la brecha relativa
+  df_z$brecha_rel_sqr = df_z$brecha_rel^2
+
+  # calculo de indices
+  N = nrow(df_y)
+
+  df_w = as.data.frame(matrix(ncol=4))
 
 
-modelo_1=Foodprice::CoCA(data=Data_mes_año,EER = EER)$cost
+  colnames(df_w) = c("deciles", "rate", "gap", "severity")
+
+  df_w$deciles = deciles_grupos[j]
+
+  df_w$rate = (nrow(df_z)/N)*100
+
+  df_w$gap = sum(df_z$brecha_rel)/N
+
+  df_w$severity = sum(df_z$brecha_rel_sqr)/N
+
+  outcome_3_list[[j]] = df_w
+
+  names(outcome_3_list)[j] = deciles_grupos[j]
+
+}
+
+
+# Dieta de subsistencia
+poverty_1_outcome = outcome_1_list[[1]]
+
+for(k in 2:10){
+  poverty_1_outcome = rbind(poverty_1_outcome,
+                            outcome_1_list[[k]])
+}
+
+
+# Dieta nutricionalmente adecuada
+poverty_2_outcome = outcome_2_list[[1]]
+for(k in 2:10){
+  poverty_2_outcome = rbind(poverty_2_outcome,
+                            outcome_2_list[[k]])
+}
+
+
+# Dieta saludable
+poverty_3_outcome = outcome_3_list[[1]]
+for(k in 2:10){
+  poverty_3_outcome = rbind(poverty_3_outcome,
+                            outcome_3_list[[k]])
+}
 
 
 
+# Agregar resultados finales en un DF
+poverty_1_outcome <- poverty_1_outcome %>%
+  mutate(model = "CoCA")
+
+poverty_2_outcome <- poverty_2_outcome %>%
+  mutate(model = "CoNA")
+
+poverty_3_outcome <- poverty_3_outcome %>%
+  mutate(model = "CoRD")
+
+# Unir los dataframes en uno solo
+poverty_outcome <- bind_rows(poverty_1_outcome, poverty_2_outcome, poverty_3_outcome)
 
 
+#--------------------------------------------------#
+# Razones costo m?nimo e ingreso en alimentación   #
+#--------------------------------------------------#
 
 
+umbral_1 =as.numeric(levels(as.factor(model_dieta_1$per_capita_month)))
+umbral_2 =as.numeric(levels(as.factor(model_dieta_2$per_capita_month)))
+umbral_3 =as.numeric(levels(as.factor(model_dieta_3$per_capita_month)))
+
+
+mean_income_food = mean_income_deciles[c("deciles_grupos", "food_per_capita_prom")]
+
+mean_income_food$umbral_1 = umbral_1
+mean_income_food$umbral_2= umbral_2
+mean_income_food$umbral_3= umbral_3
+
+mean_income_food$ratio_1 = mean_income_food$umbral_1/mean_income_food$food_per_capita_prom
+mean_income_food$ratio_2 = mean_income_food$umbral_2/mean_income_food$food_per_capita_prom
+mean_income_food$ratio_3 = mean_income_food$umbral_3/mean_income_food$food_per_capita_prom
+names(mean_income_food)= c("decile_groups", "food_per_capita_avg", "threshold_1", "threshold_2", "threshold_3", "ratio_1", "ratio_2", "ratio_3")
+
+
+#-----------------------------#
+# FIN    DEL MÓDULO 6 ORGINAL # FALTA SIMPLIFICAR Y GENERALIZAR
+#-----------------------------#
+
+# Guardando las salidas como lista
+
+Resultados=list(poverty_outcome,mean_income_food);names(Resultados)=c("Poverty_outcome","Mean_income_food")
+
+# retorno
+
+cat("Módulo 6 original ✓\n")
+
+return(invisible(Resultados))
+}
+
+
+x=Fun(Month = 1, Year = 2022, City = "Cali")
 
 
 
