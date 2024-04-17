@@ -36,7 +36,12 @@ download.file(url, temp_zip, timeout = 1000)
 temp_folder <- tempdir()
 unzip(temp_zip, exdir = temp_folder)
 
-archivos_csv <- list.files(temp_folder, recursive = TRUE, pattern = "\\.csv$", full.names = TRUE)
+
+
+# Obtener la lista de archivos
+archivos_csv <- dir(temp_folder, full.names = TRUE)
+
+
 print(archivos_csv)
 
 
@@ -114,5 +119,50 @@ Prueba(Month = 1,Year=2022,City="Cali")
 
 
 
+
+
+generate_download_url <- function(Month, Year) {
+  base_url <- "https://microdatos.dane.gov.co/index.php/catalog/"
+  dataset_id <- if (Year == 2022) 771 else NA
+  start_month <- if (Year == 2022) 22688 else NA
+  month_id <- start_month + Month - 1
+  if (!is.na(dataset_id) && !is.na(start_month)) {
+    url <- paste0(base_url, dataset_id, "/download/", month_id)
+    return(url)
+  } else {
+    stop("Year not supported")
+  }
+}
+
+# Generar la URL de descarga
+url <- generate_download_url(1, 2022)
+
+# Descargar y extraer el archivo ZIP
+temp_zip <- tempfile(fileext = ".zip")
+download.file(url, temp_zip, timeout = 1000)
+temp_folder_1 <- tempdir()
+#unzip(temp_zip, exdir = temp_folder)
+
+# Descomprimir el archivo ZIP
+system(sprintf("unzip -qq -j -o -O UTF-8 %s -d %s", temp_zip, temp_folder_1), ignore.stdout = TRUE)
+
+# Listar los archivos en el directorio temporal
+archivos <- list.files(temp_folder_1, full.names = TRUE, recursive = TRUE)
+
+
+# Crear un vector vacío para almacenar los archivos CSV
+archivos_csv <- c()
+
+# Iterar sobre los nombres de los archivos
+for (archivo in archivos) {
+  # Comprobar si el nombre del archivo termina con .csv (ignorando mayúsculas/minúsculas)
+  if (grepl("\\.csv$", archivo, ignore.case = TRUE)) {
+    # Si termina con .csv, agregarlo al vector de archivos CSV
+    archivos_csv <- c(archivos_csv, archivo)
+  }
+}
+
+# Imprimir los archivos CSV encontrados
+archivos_csv
 
 
