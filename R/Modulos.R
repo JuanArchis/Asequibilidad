@@ -774,9 +774,6 @@ return(invisible(Resultados))
 }
 
 
-Resultados=Modulos(1, 2022, "Cali")
-
-
 
 
 
