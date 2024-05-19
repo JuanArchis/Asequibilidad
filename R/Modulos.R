@@ -291,7 +291,7 @@ dataset_def_deciles$deciles = revalue(as.factor(dataset_def_deciles$deciles),
                                         "7" = "Decil 7", "8" = "Decil 8",
                                         "9" = "Decil 9", "10" = "Decil 10"))
 
-saveRDS(dataset_def_deciles, file="/home/juan-c/Descargas/Comparación/Resultados/geih_income_df_2022.RDS")
+
 
 
 #-------------------------------------------------#
@@ -774,7 +774,7 @@ return(invisible(Resultados))
 }
 
 
-
+Resultados=Modulos(1, 2022, "Cali")
 
 
 
