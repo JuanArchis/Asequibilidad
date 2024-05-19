@@ -32,22 +32,13 @@ url <- generate_download_url(Month, Year)
 
 # Descargar y extraer el archivo ZIP
 temp_zip <- tempfile(fileext = ".zip")
-download.file(url, temp_zip, timeout = 1000)
+GET(url, write_disk(temp_zip, overwrite = TRUE), timeout(1000))
 temp_folder <- tempdir()
-unzip(temp_zip, exdir = temp_folder)
+zip::unzip(temp_zip, exdir = temp_folder)
 
+archivos_csv <- list.files(temp_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
 
-
-# Obtener la lista de archivos
-
-x=list.files(temp_folder, full.names = TRUE)[2]
-print(x)
-csv_folder <- file.path(x, "CSV")
-print(csv_folder)
-archivos_csv <- list.files(csv_folder, full.names = TRUE)
 print(archivos_csv)
-
-
 
 
 # Función para detectar el delimitador
@@ -71,13 +62,6 @@ for (i in seq_along(archivos_csv)) {
 
 
 }
-
-
-
-
-
-
-
 
 
 

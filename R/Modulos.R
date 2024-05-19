@@ -171,7 +171,6 @@ Modulos <- function(Month, Year, City) {
   Caracteristicas_generales =get(envr_name, envir = data_GEIH)$"Caracter___sticas_generales,_seguridad_social_en_salud_y_educaci___n.csv"
   })
 
-
   #------------------------------------------------#
   #            FIN DEL MÓDULO 1 ORGINAL            # PENDIENTE: FALTA REVISAR POCAS COSAS.
   #------------------------------------------------#
@@ -527,206 +526,80 @@ dataset_def_deciles$per_capita_year = dataset_def_deciles$ingreso_alimentos_per_
 outcome_1_list = list()
 length(outcome_1_list) = 10
 
-for (j in 1:length(outcome_1_list)) {
-  z = as.numeric(levels(as.factor(model_dieta_1$per_capita_year)))
-  df_y = dataset_def_deciles %>% filter(deciles %in% deciles_grupos[j])
+# Precálculo de z para evitar cálculos repetitivos
+z <- as.numeric(levels(as.factor(model_dieta_1$per_capita_year)))
 
-  #crear dummy
-  df_y$dummy = NA
+outcome_1_list <- lapply(deciles_grupos, function(decile) {
+  # Filtrar dataset_def_deciles una vez para el decil actual
+  df_y <- dataset_def_deciles %>% filter(deciles %in% decile)
+  
+  # Crear dummy vectorizado
+  df_y$dummy <- ifelse(df_y$per_capita_year < z, 1, 0)
+  
+  # Filtrar df_y para obtener solo filas donde dummy es 1
+  df_z <- df_y %>% filter(dummy == 1)
+  
+  # Calcular brecha relativa y su cuadrado
+  df_z$brecha_rel <- (z - df_z$per_capita_year) / z
+  df_z$brecha_rel_sqr <- df_z$brecha_rel^2
+  
+  # Calcular los índices
+  N <- nrow(df_y)
+  rate <- (nrow(df_z) / N) * 100
+  gap <- sum(df_z$brecha_rel) / N
+  severity <- sum(df_z$brecha_rel_sqr) / N
+  
+  # Crear el dataframe de salida
+  df_w <- data.frame(deciles = decile, rate = rate, gap = gap, severity = severity)
+  
+  return(df_w)
+})
 
-  for (k in 1:nrow(df_y)) {
-
-    if (df_y$per_capita_year[k] < z) {
-      df_y$dummy[k] = 1
-    } else {
-      df_y$dummy[k] = 0
-    }
-
-  }
-
-
-
-  df_z = df_y %>% filter(dummy %in% 1)
-
-  df_z$brecha_rel =  (z - df_z$per_capita_year)/z
-
-  # calcular el cuadrado de la brecha relativa
-  df_z$brecha_rel_sqr = df_z$brecha_rel^2
-
-  # calculo de indices
-  N = nrow(df_y)
-
-  df_w = as.data.frame(matrix(ncol=4))
-
-
-  colnames(df_w) = c("deciles", "rate", "gap", "severity")
-
-  df_w$deciles = deciles_grupos[j]
-
-  df_w$rate = (nrow(df_z)/N)*100
-
-  df_w$gap = sum(df_z$brecha_rel)/N
-
-  df_w$severity = sum(df_z$brecha_rel_sqr)/N
-
-  outcome_1_list[[j]] = df_w
-
-  names(outcome_1_list)[j] = deciles_grupos[j]
-
-}
-
+# Asignar nombres a la lista de salida
+names(outcome_1_list) <- deciles_grupos
 
 
 
 # Cálculo para la dieta nutritiva
-# Calcular la proporción para cada decil
-dataset_def_deciles$per_capita_year = dataset_def_deciles$ingreso_alimentos_per_capita*12
-
-outcome_2_list = list()
-length(outcome_2_list) = 10
-
-for (j in 1:length(outcome_2_list)) {
-  z = as.numeric(levels(as.factor(model_dieta_2$per_capita_year)))
-  df_y = dataset_def_deciles %>% filter(deciles %in% deciles_grupos[j])
-
-  #crear dummy
-  df_y$dummy = NA
-
-  for (k in 1:nrow(df_y)) {
-
-    if (df_y$per_capita_year[k] < z) {
-      df_y$dummy[k] = 1
-    } else {
-      df_y$dummy[k] = 0
-    }
-
+# Función para calcular los resultados para un conjunto de datos y modelo dados
+calculate_outcome <- function(dataset, model, deciles_grupos) {
+  z <- as.numeric(levels(as.factor(model$per_capita_year)))
+  outcome_list <- list()
+  
+  for (j in 1:length(deciles_grupos)) {
+    df_y <- dataset %>% filter(deciles %in% deciles_grupos[j])
+    
+    # Crear dummy vectorizado
+    df_y$dummy <- ifelse(df_y$per_capita_year < z, 1, 0)
+    
+    df_z <- df_y %>% filter(dummy == 1)
+    
+    df_z$brecha_rel <- (z - df_z$per_capita_year) / z
+    df_z$brecha_rel_sqr <- df_z$brecha_rel^2
+    
+    N <- nrow(df_y)
+    rate <- (nrow(df_z) / N) * 100
+    gap <- sum(df_z$brecha_rel) / N
+    severity <- sum(df_z$brecha_rel_sqr) / N
+    
+    df_w <- data.frame(deciles = deciles_grupos[j], rate = rate, gap = gap, severity = severity)
+    
+    outcome_list[[j]] <- df_w
   }
-
-
-
-  df_z = df_y %>% filter(dummy %in% 1)
-
-  df_z$brecha_rel =  (z - df_z$per_capita_year)/z
-
-  # calcular el cuadrado de la brecha relativa
-  df_z$brecha_rel_sqr = df_z$brecha_rel^2
-
-  # calculo de indices
-  N = nrow(df_y)
-
-  df_w = as.data.frame(matrix(ncol=4))
-
-
-  colnames(df_w) = c("deciles", "rate", "gap", "severity")
-
-  df_w$deciles = deciles_grupos[j]
-
-  df_w$rate = (nrow(df_z)/N)*100
-
-  df_w$gap = sum(df_z$brecha_rel)/N
-
-  df_w$severity = sum(df_z$brecha_rel_sqr)/N
-
-  outcome_2_list[[j]] = df_w
-
-  names(outcome_2_list)[j] = deciles_grupos[j]
-
+  
+  names(outcome_list) <- deciles_grupos
+  return(outcome_list)
 }
 
+# Calcular resultados para los tres escenarios
+outcome_1_list <- calculate_outcome(dataset_def_deciles, model_dieta_1, deciles_grupos)
+outcome_2_list <- calculate_outcome(dataset_def_deciles, model_dieta_2, deciles_grupos)
+outcome_3_list <- calculate_outcome(dataset_def_deciles, model_dieta_3, deciles_grupos)
 
-
-# Cálculo para la dieta saludable
-# Calcular la proporción para cada decil
-dataset_def_deciles$per_capita_year = dataset_def_deciles$ingreso_alimentos_per_capita*12
-
-
-outcome_3_list = list()
-length(outcome_3_list) = 10
-
-for (j in 1:length(outcome_3_list)) {
-  z = as.numeric(levels(as.factor(model_dieta_3$per_capita_year)))
-  df_y = dataset_def_deciles %>% filter(deciles %in% deciles_grupos[j])
-
-  #crear dummy
-  df_y$dummy = NA
-
-  for (k in 1:nrow(df_y)) {
-
-    if (df_y$per_capita_year[k] < z) {
-      df_y$dummy[k] = 1
-    } else {
-      df_y$dummy[k] = 0
-    }
-
-  }
-
-
-
-  df_z = df_y %>% filter(dummy %in% 1)
-
-  df_z$brecha_rel =  (z - df_z$per_capita_year)/z
-
-  # calcular el cuadrado de la brecha relativa
-  df_z$brecha_rel_sqr = df_z$brecha_rel^2
-
-  # calculo de indices
-  N = nrow(df_y)
-
-  df_w = as.data.frame(matrix(ncol=4))
-
-
-  colnames(df_w) = c("deciles", "rate", "gap", "severity")
-
-  df_w$deciles = deciles_grupos[j]
-
-  df_w$rate = (nrow(df_z)/N)*100
-
-  df_w$gap = sum(df_z$brecha_rel)/N
-
-  df_w$severity = sum(df_z$brecha_rel_sqr)/N
-
-  outcome_3_list[[j]] = df_w
-
-  names(outcome_3_list)[j] = deciles_grupos[j]
-
-}
-
-
-# Dieta de subsistencia
-poverty_1_outcome = outcome_1_list[[1]]
-
-for(k in 2:10){
-  poverty_1_outcome = rbind(poverty_1_outcome,
-                            outcome_1_list[[k]])
-}
-
-
-# Dieta nutricionalmente adecuada
-poverty_2_outcome = outcome_2_list[[1]]
-for(k in 2:10){
-  poverty_2_outcome = rbind(poverty_2_outcome,
-                            outcome_2_list[[k]])
-}
-
-
-# Dieta saludable
-poverty_3_outcome = outcome_3_list[[1]]
-for(k in 2:10){
-  poverty_3_outcome = rbind(poverty_3_outcome,
-                            outcome_3_list[[k]])
-}
-
-
-
-# Agregar resultados finales en un DF
-poverty_1_outcome <- poverty_1_outcome %>%
-  mutate(model = "CoCA")
-
-poverty_2_outcome <- poverty_2_outcome %>%
-  mutate(model = "CoNA")
-
-poverty_3_outcome <- poverty_3_outcome %>%
-  mutate(model = "CoRD")
+# Combinar resultados para cada escenario
+poverty_1_outcome <- do.call(rbind, outcome_1_list)
+poverty_2_outcome <- do.call(rbind, outcome_2_list)
+poverty_3_outcome <- do.call(rbind, outcome_3_list)
 
 # Unir los dataframes en uno solo
 poverty_outcome <- bind_rows(poverty_1_outcome, poverty_2_outcome, poverty_3_outcome)
@@ -767,9 +640,6 @@ Resultados=list(poverty_outcome,mean_income_food);names(Resultados)=c("Poverty_o
 cat("Módulo 6 original ✓\n")
 
 return(invisible(Resultados))
+
 }
-
-
-
-
 
