@@ -104,8 +104,8 @@ Modulos <- function(Month, Year, City) {
     temp_folder <- tempdir()
     zip::unzip(temp_zip, exdir = temp_folder)
 
-    csv_folder <- list.files(temp_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
-    archivos_csv <- list.files(csv_folder, full.names = TRUE)
+    archivos_csv <- list.files(temp_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
+
 
   # Función para detectar el delimitador
   detect_delimiter <- function(file_path) {
