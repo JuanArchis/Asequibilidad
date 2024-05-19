@@ -168,11 +168,8 @@ Modulos <- function(Month, Year, City) {
 
   Otros_ingresos_e_impuestos = get(envr_name, envir = data_GEIH)$Otros_ingresos_e_impuestos.csv
 
-  Caracteristicas_generales =get(envr_name, envir = data_GEIH)$"Caracter_sticas_generales,_seguridad_social_en_salud_y_educaci_n.csv"
+  Caracteristicas_generales =get(envr_name, envir = data_GEIH)$"Caracter___sticas_generales,_seguridad_social_en_salud_y_educaci___n.csv"
   })
-
-
-  cat("Módulo 1 original ✓\n")
 
 
   #------------------------------------------------#
