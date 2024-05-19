@@ -57,7 +57,9 @@ Modulos <- function(Month, Year, City) {
   # Cargar la librería Foodprice
   library(Foodprice)
 
-  cat("Carga de librerias original ✓\n")
+  cat("Módulo 1:  Carga de librerias y Datos de GEIH \n")
+  
+  
   #------------------------------------------------#
   #   Sub 0.1: Crear entornos y descargar datos    #
   #------------------------------------------------#
@@ -94,7 +96,14 @@ Modulos <- function(Month, Year, City) {
       }
     }
 
-
+ symbols <- c("|", "/", "-", "\\")  # Lista de símbolos para la animación
+ for (i in 1:100) {  # Repetir 10 veces para simular una carga corta
+      cat(paste0("     Descargando y extrayendo los datos de la GEIH... ", symbols[i %% length(symbols) + 1], "\r"))
+      Sys.sleep(0.1)  # Tiempo de espera entre cada símbolo (simulando la carga)
+  }
+    
+      
+      
     # Generar la URL de descarga
     url <- generate_download_url(Month, Year)
 
@@ -168,9 +177,12 @@ Modulos <- function(Month, Year, City) {
 
   Otros_ingresos_e_impuestos = get(envr_name, envir = data_GEIH)$Otros_ingresos_e_impuestos.csv
 
-  Caracteristicas_generales =get(envr_name, envir = data_GEIH)$"Caracter___sticas_generales,_seguridad_social_en_salud_y_educaci___n.csv"
+  Caracteristicas_generales =get(envr_name, envir = data_GEIH)$`Caracter___sticas_generales,_seguridad_social_en_salud_y_educaci___n.csv`
   })
 
+
+  cat("\n     Finalizado ✓ \n")
+  
   #------------------------------------------------#
   #            FIN DEL MÓDULO 1 ORGINAL            # PENDIENTE: FALTA REVISAR POCAS COSAS.
   #------------------------------------------------#
@@ -183,6 +195,8 @@ Modulos <- function(Month, Year, City) {
   #-----------------------------#
   # INICIO DEL MÓDULO 2 ORGINAL #
   #-----------------------------#
+
+cat("Módulo 2 y 3:   Cálculo ingresos de hogares ")
 
   # filtro para Cali, Valle del Cauca (código 76)
   OcupadosF <-filter( Ocupados, AREA == 76)
@@ -305,7 +319,7 @@ deciles_grupos = c("Decil 1", "Decil 2",
 
 
 
-cat("Módulo 2 y 3 original ✓\n")
+cat("     Finalizado ✓ \n")
 
 
 #------------------------------------------------#
@@ -320,6 +334,8 @@ cat("Módulo 2 y 3 original ✓\n")
 #-----------------------------#
 # INICIO DEL MÓDULO 4 ORGINAL #
 #-----------------------------#
+
+cat("Módulo 4:  Proporcion del gasto en alimentación ")
 
 
 deciles_gasto = data.frame(levels(as.factor(dataset_def_deciles$deciles)))
@@ -408,12 +424,12 @@ for (k in 1:length(deciles_grupos)) {
 
 mean_income_deciles = mean_income
 
-cat("Módulo 4 original ✓\n")
+cat("     Finalizado ✓ \n")
 
 #-----------------------------#
 # FIN    DEL MÓDULO 4 ORGINAL #
 #-----------------------------#
-
+cat("Módulo 5:  Reatroalimentación con el paquete Foodprice ")
 
 invisible(capture.output({
 #----------------------------------------------------------------------------------#
@@ -424,6 +440,8 @@ invisible(capture.output({
 # INICIO DEL MÓDULO 5 ORGINAL #
 #-----------------------------#
 
+
+  
 
 Data_mes_año=Foodprice::DataCol(Month = Month, Year = Year, City = City)
 
@@ -504,7 +522,7 @@ model_dieta_1$per_capita_month = model_dieta_1$per_capita*30
 model_dieta_2$per_capita_month = model_dieta_2$per_capita*30
 model_dieta_3$per_capita_month = model_dieta_3$per_capita*30
 
-cat("Módulo 5 original ✓\n")
+cat("     Finalizado ✓ \n")
 
 
 #-----------------------------#
@@ -519,6 +537,8 @@ cat("Módulo 5 original ✓\n")
 # INICIO DEL MÓDULO 6 ORGINAL #
 #-----------------------------#
 
+cat("Módulo 6: Cálculo de indicadores de asequibilidad")
+
 # Calcular la proporción para cada decil
 dataset_def_deciles$per_capita_year = dataset_def_deciles$ingreso_alimentos_per_capita*12
 
@@ -526,7 +546,6 @@ dataset_def_deciles$per_capita_year = dataset_def_deciles$ingreso_alimentos_per_
 outcome_1_list = list()
 length(outcome_1_list) = 10
 
-# Precálculo de z para evitar cálculos repetitivos
 z <- as.numeric(levels(as.factor(model_dieta_1$per_capita_year)))
 
 outcome_1_list <- lapply(deciles_grupos, function(decile) {
@@ -558,10 +577,6 @@ outcome_1_list <- lapply(deciles_grupos, function(decile) {
 # Asignar nombres a la lista de salida
 names(outcome_1_list) <- deciles_grupos
 
-
-
-# Cálculo para la dieta nutritiva
-# Función para calcular los resultados para un conjunto de datos y modelo dados
 calculate_outcome <- function(dataset, model, deciles_grupos) {
   z <- as.numeric(levels(as.factor(model$per_capita_year)))
   outcome_list <- list()
@@ -601,6 +616,18 @@ poverty_1_outcome <- do.call(rbind, outcome_1_list)
 poverty_2_outcome <- do.call(rbind, outcome_2_list)
 poverty_3_outcome <- do.call(rbind, outcome_3_list)
 
+
+
+# Agregar resultados finales en un DF
+poverty_1_outcome <- poverty_1_outcome %>%
+  mutate(model = "CoCA")
+
+poverty_2_outcome <- poverty_2_outcome %>%
+  mutate(model = "CoNA")
+
+poverty_3_outcome <- poverty_3_outcome %>%
+  mutate(model = "CoRD")
+
 # Unir los dataframes en uno solo
 poverty_outcome <- bind_rows(poverty_1_outcome, poverty_2_outcome, poverty_3_outcome)
 
@@ -626,7 +653,6 @@ mean_income_food$ratio_2 = mean_income_food$umbral_2/mean_income_food$food_per_c
 mean_income_food$ratio_3 = mean_income_food$umbral_3/mean_income_food$food_per_capita_prom
 names(mean_income_food)= c("decile_groups", "food_per_capita_avg", "threshold_1", "threshold_2", "threshold_3", "ratio_1", "ratio_2", "ratio_3")
 
-
 #-----------------------------#
 # FIN    DEL MÓDULO 6 ORGINAL # FALTA SIMPLIFICAR Y GENERALIZAR
 #-----------------------------#
@@ -637,9 +663,10 @@ Resultados=list(poverty_outcome,mean_income_food);names(Resultados)=c("Poverty_o
 
 # retorno
 
-cat("Módulo 6 original ✓\n")
+cat("     Finalizado ✓ \n")
 
 return(invisible(Resultados))
 
 }
+
 
