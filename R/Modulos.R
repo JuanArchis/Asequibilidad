@@ -42,7 +42,7 @@ Modulos <- function(Month, Year, City) {
 
 
   # Carga de librerías
-  Librerias_base <- c("here", "readxl", "tidyverse", "knitr", "moments", "maditr", "mice", "VIM", "dplyr", "finalfit", "plyr","hdd")
+  Librerias_base <- c("here", "readxl", "tidyverse", "knitr", "moments", "maditr", "mice", "VIM", "dplyr", "finalfit", "plyr","hdd","zip","httr")
   if (!require("pacman")) install.packages("pacman")
   pacman::p_load(char = Librerias_base, character.only = TRUE)
 
