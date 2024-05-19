@@ -100,12 +100,11 @@ Modulos <- function(Month, Year, City) {
 
     # Descargar y extraer el archivo ZIP
     temp_zip <- tempfile(fileext = ".zip")
-    download.file(url, temp_zip, timeout = 1000)
+    GET(url, write_disk(temp_zip, overwrite = TRUE), timeout(1000))
     temp_folder <- tempdir()
-    unzip(temp_zip, exdir = temp_folder)
+    zip::unzip(temp_zip, exdir = temp_folder)
 
-    rchivos <- list.files(temp_folder,full.names = TRUE)[2]
-    csv_folder <- file.path(rchivos, "CSV")
+    csv_folders <- list.files(temp_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
     archivos_csv <- list.files(csv_folder, full.names = TRUE)
 
   # Función para detectar el delimitador
