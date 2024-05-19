@@ -57,7 +57,7 @@ Modulos <- function(Month, Year, City) {
   # Cargar la librería Foodprice
   library(Foodprice)
 
-
+  cat("Carga de librerias original ✓\n")
   #------------------------------------------------#
   #   Sub 0.1: Crear entornos y descargar datos    #
   #------------------------------------------------#
@@ -104,7 +104,7 @@ Modulos <- function(Month, Year, City) {
     temp_folder <- tempdir()
     zip::unzip(temp_zip, exdir = temp_folder)
 
-    csv_folders <- list.files(temp_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
+    csv_folder <- list.files(temp_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
     archivos_csv <- list.files(csv_folder, full.names = TRUE)
 
   # Función para detectar el delimitador
