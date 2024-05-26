@@ -111,8 +111,19 @@ Modulos <- function(Month, Year, City) {
     temp_zip <- tempfile(fileext = ".zip")
     GET(url, write_disk(temp_zip, overwrite = TRUE), timeout(1000))
     temp_folder <- tempdir()
-    zip::unzip(temp_zip, exdir = temp_folder)
+    #zip::unzip(temp_zip, exdir = temp_folder)
+    
+    
 
+    if (.Platform$OS.type == "windows") {
+      unzip_command <- sprintf('powershell -Command "Expand-Archive -LiteralPath \'%s\' -DestinationPath \'%s\' > $null 2>&1"', temp_zip, temp_folder)
+      system(unzip_command, wait = TRUE)
+    } else {
+      # Para Linux y otros sistemas Unix-like
+      system2("unzip", c(temp_zip, "-d", temp_folder), stdout = NULL, stderr = NULL)
+    }
+    
+    
     archivos_csv <- list.files(temp_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
 
 
@@ -177,11 +188,13 @@ Modulos <- function(Month, Year, City) {
 
   Otros_ingresos_e_impuestos = get(envr_name, envir = data_GEIH)$Otros_ingresos_e_impuestos.csv
 
-  Caracteristicas_generales =get(envr_name, envir = data_GEIH)$`Caracter___sticas_generales,_seguridad_social_en_salud_y_educaci___n.csv`
+  Caracteristicas_generales =get(envr_name, envir = data_GEIH)$`Caracter__sticas_generales,_seguridad_social_en_salud_y_educaci__n.csv`
   })
 
 
   cat("\n     Finalizado ✓ \n")
+  
+  
   
   #------------------------------------------------#
   #            FIN DEL MÓDULO 1 ORGINAL            # PENDIENTE: FALTA REVISAR POCAS COSAS.
@@ -196,7 +209,7 @@ Modulos <- function(Month, Year, City) {
   # INICIO DEL MÓDULO 2 ORGINAL #
   #-----------------------------#
 
-cat("Módulo 2 y 3:   Cálculo ingresos de hogares ")
+  Sys.sleep(1);cat("Módulo 2 y 3:   Cálculo ingresos de hogares ")
 
   # filtro para Cali, Valle del Cauca (código 76)
   OcupadosF <-filter( Ocupados, AREA == 76)
@@ -335,7 +348,7 @@ cat("     Finalizado ✓ \n")
 # INICIO DEL MÓDULO 4 ORGINAL #
 #-----------------------------#
 
-cat("Módulo 4:  Proporcion del gasto en alimentación ")
+Sys.sleep(1);cat("Módulo 4:  Proporcion del gasto en alimentación ")
 
 
 deciles_gasto = data.frame(levels(as.factor(dataset_def_deciles$deciles)))
@@ -429,7 +442,7 @@ cat("     Finalizado ✓ \n")
 #-----------------------------#
 # FIN    DEL MÓDULO 4 ORGINAL #
 #-----------------------------#
-cat("Módulo 5:  Reatroalimentación con el paquete Foodprice ")
+Sys.sleep(1);cat("Módulo 5:  Reatroalimentación con el paquete Foodprice ")
 
 invisible(capture.output({
 #----------------------------------------------------------------------------------#
@@ -537,7 +550,7 @@ cat("     Finalizado ✓ \n")
 # INICIO DEL MÓDULO 6 ORGINAL #
 #-----------------------------#
 
-cat("Módulo 6: Cálculo de indicadores de asequibilidad")
+Sys.sleep(1);cat("Módulo 6: Cálculo de indicadores de asequibilidad")
 
 # Calcular la proporción para cada decil
 dataset_def_deciles$per_capita_year = dataset_def_deciles$ingreso_alimentos_per_capita*12
@@ -663,10 +676,12 @@ Resultados=list(poverty_outcome,mean_income_food);names(Resultados)=c("Poverty_o
 
 # retorno
 
-cat("     Finalizado ✓ \n")
+Sys.sleep(1);cat("     Finalizado ✓ \n")
 
 return(invisible(Resultados))
 
 }
+
+
 
 
