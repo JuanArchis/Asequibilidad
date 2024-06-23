@@ -58,8 +58,8 @@ Modulos <- function(Month, Year, City) {
   library(Foodprice)
 
   cat("Módulo 1:  Carga de librerias y Datos de GEIH \n")
-  
-  
+
+
   #------------------------------------------------#
   #   Sub 0.1: Crear entornos y descargar datos    #
   #------------------------------------------------#
@@ -101,9 +101,9 @@ Modulos <- function(Month, Year, City) {
       cat(paste0("     Descargando y extrayendo los datos de la GEIH... ", symbols[i %% length(symbols) + 1], "\r"))
       Sys.sleep(0.1)  # Tiempo de espera entre cada símbolo (simulando la carga)
   }
-    
-      
-      
+
+
+
     # Generar la URL de descarga
     url <- generate_download_url(Month, Year)
 
@@ -112,8 +112,8 @@ Modulos <- function(Month, Year, City) {
     GET(url, write_disk(temp_zip, overwrite = TRUE), timeout(1000))
     temp_folder <- tempdir()
     #zip::unzip(temp_zip, exdir = temp_folder)
-    
-    
+
+
 
     if (.Platform$OS.type == "windows") {
       unzip_command <- sprintf('powershell -Command "Expand-Archive -LiteralPath \'%s\' -DestinationPath \'%s\' > $null 2>&1"', temp_zip, temp_folder)
@@ -122,8 +122,8 @@ Modulos <- function(Month, Year, City) {
       # Para Linux y otros sistemas Unix-like
       system2("unzip", c(temp_zip, "-d", temp_folder), stdout = NULL, stderr = NULL)
     }
-    
-    
+
+
     archivos_csv <- list.files(temp_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
 
 
@@ -153,11 +153,11 @@ Modulos <- function(Month, Year, City) {
   #------------------------------------------------#
 
   # Patrones de nombres a mantener
-  patrones_a_mantener <- c("Ocupados", "No ocupados", "Otros ingresos e impuestos", "Datos del hogar y la vivienda", "Caracteristicas generales, seguridad social en salud y educacion.")
+  patrones_a_mantener <- c("Ocupados", "No ocupados", "Otros ingresos e impuestos", "Datos del hogar y la vivienda", "Caracteristicas generales, seguridad social en salud y educacion.","Fuerza_trabajo","Otras formas de trabajo")
 
   # Nombres de los dataframes en el entorno actual
   nombres_dataframes <- names(get(envr_name, envir = data_GEIH))
-
+  print(nombres_dataframes)
   # Función para calcular la similitud entre dos cadenas de caracteres
   similarity <- function(pattern, name) {
     max_sim <- max(adist(pattern, name))
@@ -189,13 +189,15 @@ Modulos <- function(Month, Year, City) {
   Otros_ingresos_e_impuestos = get(envr_name, envir = data_GEIH)$Otros_ingresos_e_impuestos.csv
 
   Caracteristicas_generales =get(envr_name, envir = data_GEIH)$`Caracter__sticas_generales,_seguridad_social_en_salud_y_educaci__n.csv`
+
+  Fuerza_trabajo=get(envr_name, envir = data_GEIH)$Fuerza_de_trabajo.csv
+
+  Otras_formas_de_trabajo=get(envr_name, envir = data_GEIH)$Otras_formas_de_trabajo.csv
   })
 
+  cat("\n    Finalizado ✓ \n")
 
-  cat("\n     Finalizado ✓ \n")
-  
-  
-  
+
   #------------------------------------------------#
   #            FIN DEL MÓDULO 1 ORGINAL            # PENDIENTE: FALTA REVISAR POCAS COSAS.
   #------------------------------------------------#
@@ -205,131 +207,116 @@ Modulos <- function(Month, Year, City) {
   #    Modulo 1: Distribución de ingresos corrientes  y factores de xp               #
   #----------------------------------------------------------------------------------#
 
-  #-----------------------------#
-  # INICIO DEL MÓDULO 2 ORGINAL #
-  #-----------------------------#
+  #---------------------------------------------#
+  # INICIO DEL MÓDULO 1: Algoritmo ingreso GEIH #
+  #---------------------------------------------#
 
   Sys.sleep(1);cat("Módulo 2 y 3:   Cálculo ingresos de hogares ")
 
-  # filtro para Cali, Valle del Cauca (código 76)
-  OcupadosF <-filter( Ocupados, AREA == 76)
-  Datos_del_hogar_y_la_viviendaF <- filter(Datos_del_hogar_y_la_vivienda,AREA == 76)
-  No_ocupadosF <- filter(No_ocupados,AREA == 76)
-  Otros_ingresos_e_impuestosF <- filter(Otros_ingresos_e_impuestos,AREA == 76)
-  Caracteristicas_generalesF <- filter(Caracteristicas_generales,AREA == 76)
+  # Crear una variable para identificar cada módulo
+  Ocupados$ocu = 1
+  Datos_del_hogar_y_la_vivienda$DHV = 1
+  No_ocupados$no_ocu = 1
+  Otros_ingresos_e_impuestos$OI = 1
+  Caracteristicas_generales$CG = 1
+  Fuerza_trabajo$L = 1
+  Otras_formas_de_trabajo$OFT = 1
 
-  # seleccionar variables de interés
-  ocup <- OcupadosF[c("DIRECTORIO","SECUENCIA_P","ORDEN","P6800", "INGLABO")]
-  Datos_vivi <- Datos_del_hogar_y_la_viviendaF[c("DIRECTORIO","SECUENCIA_P","P4030S1A1","P6008")]
-  Noocup <- No_ocupadosF[c("DIRECTORIO","SECUENCIA_P","ORDEN","P7422S1")]
-  Ot_ing <- Otros_ingresos_e_impuestosF[c("DIRECTORIO","SECUENCIA_P","ORDEN","P7500S1A1","P7500S2A1","P7500S3A1")]
-  Car_gen <- Caracteristicas_generalesF[c("DIRECTORIO","SECUENCIA_P","ORDEN","P3271","P6050","P6040", "P3042", "FEX_C18")]
+  # Omisión de variables
+  ocup <- Ocupados %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, FEX_C18, PER, REGIS, FT))
+  Datos_vivi <- Datos_del_hogar_y_la_vivienda %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, FEX_C18, PER, REGIS))
+  Noocup <- No_ocupados %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, FEX_C18, PER, REGIS, FFT))
+  Ot_ing <- Otros_ingresos_e_impuestos %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, FEX_C18, PER, REGIS))
+  Fuerza <- Fuerza_trabajo %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, FEX_C18, PER, REGIS))
+  Ot_formas <- Otras_formas_de_trabajo %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, FEX_C18, PER, REGIS))
+  Car_gen <- Caracteristicas_generales  %>% select(-c(PERIODO, HOGAR, REGIS))
+
+
+  # filtro para Cali, Valle del Cauca (código 76)
+
+  #OcupadosF <-filter( Ocupados, AREA == 76)
+  #Datos_del_hogar_y_la_viviendaF <- filter(Datos_del_hogar_y_la_vivienda,AREA == 76)
+  #No_ocupadosF <- filter(No_ocupados,AREA == 76)
+  #Otros_ingresos_e_impuestosF <- filter(Otros_ingresos_e_impuestos,AREA == 76)
+  #Caracteristicas_generalesF <- filter(Caracteristicas_generales,AREA == 76)
 
   # merge completo
   OCUP_Noocup <- merge(ocup,Noocup, by = c("DIRECTORIO", "SECUENCIA_P","ORDEN"), all = TRUE)
-  OCUP_Noocup_OT_ING<- merge(OCUP_Noocup,Ot_ing, by = c("DIRECTORIO", "SECUENCIA_P","ORDEN"), all = TRUE)
-  OCUP_Noocup_OT_ING_CAR_GEN <- merge(OCUP_Noocup_OT_ING,Car_gen, by = c("DIRECTORIO", "SECUENCIA_P","ORDEN"), all = TRUE)
-  dataset <-merge(OCUP_Noocup_OT_ING_CAR_GEN,Datos_vivi, by = c("DIRECTORIO", "SECUENCIA_P"))
+  OCUP_Noocup_OTING<- merge(OCUP_Noocup,Ot_ing, by = c("DIRECTORIO", "SECUENCIA_P","ORDEN"), all = TRUE)
+  OCUP_Noocup_OTING_FT <- merge(OCUP_Noocup_OTING, Fuerza, by = c("DIRECTORIO", "SECUENCIA_P","ORDEN"), all = TRUE)
+  OCUP_Noocup_OTING_FT_OTF <- merge(OCUP_Noocup_OTING_FT, Ot_formas, by = c("DIRECTORIO", "SECUENCIA_P","ORDEN"), all = TRUE)
+  OCUP_Noocup_OTING_FT_OTF_CARGEN <- merge(OCUP_Noocup_OTING_FT_OTF,Car_gen, by = c("DIRECTORIO", "SECUENCIA_P","ORDEN"), all = TRUE)
 
-  # hogares con ingresos laborales NA
-  hogares_na = ocup %>% filter(is.na(INGLABO))
-
-  # eliminar hogares con ingresos laborales NA
-  dataset_x = dataset %>% filter(DIRECTORIO %in% setdiff(levels(as.factor(dataset$DIRECTORIO)),
-                                                         levels(as.factor(hogares_na$DIRECTORIO))))
-
-  # cálculo de ingresos corrientes totales por persona
-  dataset_x = mutate(dataset_x,
-                     Ingresos =
-                       rowSums(dataset_x[ , c("INGLABO","P7422S1","P7500S1A1","P7500S2A1","P7500S3A1")], na.rm=TRUE))
-
-  # construccion de una variable de identificación para los hogares
-  dataset_x$id = paste0(dataset_x$DIRECTORIO,"-",dataset_x$SECUENCIA_P)
-
-  # construccion de base de datos de recepción vacía
-  dataset_2 = data.frame(levels(as.factor(dataset_x$id)))
-  colnames(dataset_2) = "id"
-  dataset_2$ingresos = NA
-
-  hogares_id = levels(as.factor(dataset_2$id))
-
-  # bucle para el cálculo de los ingresos para los hogares
-  for (k in 1:length(hogares_id)) {
-    df = data.frame()
-    df = dataset_x %>% filter(id %in% hogares_id[k])
-    q = which(dataset_2$id == hogares_id[k])
-    dataset_2$ingresos[q]= sum(df$Ingresos)
-  }
-
-  # incluir la variable de tamaño de los hogares
-  dataset_2 = merge(dataset_2, dataset_x[c("id", "P6008", "FEX_C18")], by ="id")
-  dataset_2 = dataset_2[!duplicated(dataset_2),]
-
-  # remover bases de datos
-  rm(Car_gen, Caracteristicas_generales, Caracteristicas_generalesF,
-     Datos_del_hogar_y_la_vivienda, Datos_del_hogar_y_la_viviendaF,
-     Datos_vivi, df, No_ocupados, No_ocupadosF, Noocup,
-     ocup, OCUP_Noocup, Ocupados, OcupadosF, Ot_ing, Otros_ingresos_e_impuestos,
-     Otros_ingresos_e_impuestosF, OCUP_Noocup_OT_ING, OCUP_Noocup_OT_ING_CAR_GEN,
-     hogares_na, k, q, hogares_id)
+  personas <-merge(OCUP_Noocup_OTING_FT_OTF_CARGEN,Datos_vivi, by = c("DIRECTORIO", "SECUENCIA_P"))
 
 
 
-  #-----------------------------#
-  # INICIO DEL MÓDULO 3 ORGINAL #
-  #-----------------------------#
+  # Convertir las variables a minúsculas
+  colnames(personas) <- tolower(colnames(personas))
 
-# eliminar ingreso = 98
-# (Nota: la eliminación de valores atípicos debería solucionar el problema del
-# valor convencional (98))
-dataset_def= dataset_2  %>% filter(!ingresos  %in% 98)
+  # Quitar AREA == 88 y AREA == NA
+  personas <- personas %>% filter(dpto <= 80)
 
-# eliminar hogares con ingresos 0
-dataset_def= dataset_2  %>% filter(!ingresos  %in% 0)
+  # Crear variable id para las personas
+  personas$id <- paste0(personas$directorio,"-",
+                        personas$secuencia_p,"-",
+                        personas$orden)
 
-# valores atipicos
-prob = quantile(dataset_def$ingresos, probs = seq(0,1, by = 0.01))
-p_min = prob[2]
-p_max = prob[100]
+  # Filtro para el dominio urbano (esta línea de código no es estrictamente necesaria
+  # porque, en teorías, la variable "AREA" filta para la zona urbana [ciudades y A.M.].
+  # La dejo por precaución)
+  df_urbano <- personas %>% filter(clase == 1)
 
-dataset_def = dataset_def  %>% filter(ingresos > p_min & ingresos < p_max)
+  # Renombrar el estrato socioeconómico (P4030S1A1)
+  df_total <- df_urbano %>% mutate(estrato = p4030s1a1) %>% select(-p4030s1a1)
+
+  # Recodificar la variable dominio
+  # Se busca definir tres categorías:
+  # (1) 13 ciudades principales y áreas metropolitanas
+  # (2) Resto urbano
+  # (3) Área rural
+
+  df_total$dominio = as.numeric(df_total$area)
+
+  df_total$dominio[df_total$dominio == "63"] = "ARMENIA"
+  df_total$dominio[df_total$dominio == "8"] = "BARRANQUILLA"
+  df_total$dominio[df_total$dominio == "11"] = "BOGOTA"
+  df_total$dominio[df_total$dominio == "68"] = "BUCARAMANGA"
+  df_total$dominio[df_total$dominio == "76"] = "CALI"
+  df_total$dominio[df_total$dominio == "13"] = "CARTAGENA"
+  df_total$dominio[df_total$dominio == "54"] = "CUCUTA"
+  df_total$dominio[df_total$dominio == "18"] = "FLORENCIA"
+  df_total$dominio[df_total$dominio == "73"] = "IBAGUE"
+  df_total$dominio[df_total$dominio == "17"] = "MANIZALES"
+  df_total$dominio[df_total$dominio == "5"] = "MEDELLIN"
+  df_total$dominio[df_total$dominio == "23"] = "MONTERIA"
+  df_total$dominio[df_total$dominio == "41"] = "NEIVA"
+  df_total$dominio[df_total$dominio == "52"] = "PASTO"
+  df_total$dominio[df_total$dominio == "66"] = "PEREIRA"
+  df_total$dominio[df_total$dominio == "19"] = "POPAYAN"
+  df_total$dominio[df_total$dominio == "27"] = "QUIBDO"
+  df_total$dominio[df_total$dominio == "44"] = "RIOHACHA"
+  df_total$dominio[df_total$dominio == "47"] = "SANTA MARTA"
+  df_total$dominio[df_total$dominio == "70"] = "SINCELEJO"
+  df_total$dominio[df_total$dominio == "15"] = "TUNJA"
+  df_total$dominio[df_total$dominio == "20"] = "VALLEDUPAR"
+  df_total$dominio[df_total$dominio == "50"] = "VILLAVICENCIO"
+  df_total$dominio[is.na(df_total$dominio)] = "RESTO URBANO"
+
+  # Ajustar NA en las variables binarias creadas para cada módulo
+  # (Por ejemplo, en el módulo de ocupados: si ocu == NA, entonces ocu == 0)
+  df_total$ocu[is.na(df_total$ocu)] = 0
+  df_total$dhv[is.na(df_total$dhv)] = 0
+  df_total$no_ocu[is.na(df_total$no_ocu)] = 0
+  df_total$oi[is.na(df_total$oi)] = 0
+  df_total$cg[is.na(df_total$cg)] = 0
+  df_total$l[is.na(df_total$l)] = 0
+  df_total$oft[is.na(df_total$oft)] = 0
 
 
-
-gastos_ingresos_exp <- dataset_def %>%
-  slice(rep(1:n(), times = dataset_def$FEX_C18)) %>%
-  na.omit()
-
-
-
-gastos_ingresos_exp$per_capita = gastos_ingresos_exp$ingresos/gastos_ingresos_exp$P6008
-
-dataset_def_deciles = gastos_ingresos_exp %>% mutate(deciles = ntile(per_capita, 10))
-
-dataset_def_deciles$deciles = revalue(as.factor(dataset_def_deciles$deciles),
-                                      c("1" = "Decil 1", "2" = "Decil 2",
-                                        "3" = "Decil 3", "4" = "Decil 4",
-                                        "5" = "Decil 5", "6" = "Decil 6",
-                                        "7" = "Decil 7", "8" = "Decil 8",
-                                        "9" = "Decil 9", "10" = "Decil 10"))
-
-
-
-
-#-------------------------------------------------#
-#               Tabla de resumen:                 #
-#    ingreso (mean & max.) y gasto (mean & max.)  #
-#-------------------------------------------------#
-
-geih_ingresos = dataset_def_deciles
-dataset_def_deciles = dataset_def_deciles
-# Hallar el ingreso promedio por decil
-deciles_grupos = c("Decil 1", "Decil 2",
-                   "Decil 3", "Decil 4",
-                   "Decil 5", "Decil 6",
-                   "Decil 7", "Decil 8",
-                   "Decil 9", "Decil 10")
-
+#---------------------------------------------#
+# INICIO DEL MÓDULO 2: Algoritmo ingreso GEIH #
+#---------------------------------------------#
 
 
 cat("     Finalizado ✓ \n")
@@ -454,7 +441,7 @@ invisible(capture.output({
 #-----------------------------#
 
 
-  
+
 
 Data_mes_año=Foodprice::DataCol(Month = Month, Year = Year, City = City)
 
@@ -564,26 +551,26 @@ z <- as.numeric(levels(as.factor(model_dieta_1$per_capita_year)))
 outcome_1_list <- lapply(deciles_grupos, function(decile) {
   # Filtrar dataset_def_deciles una vez para el decil actual
   df_y <- dataset_def_deciles %>% filter(deciles %in% decile)
-  
+
   # Crear dummy vectorizado
   df_y$dummy <- ifelse(df_y$per_capita_year < z, 1, 0)
-  
+
   # Filtrar df_y para obtener solo filas donde dummy es 1
   df_z <- df_y %>% filter(dummy == 1)
-  
+
   # Calcular brecha relativa y su cuadrado
   df_z$brecha_rel <- (z - df_z$per_capita_year) / z
   df_z$brecha_rel_sqr <- df_z$brecha_rel^2
-  
+
   # Calcular los índices
   N <- nrow(df_y)
   rate <- (nrow(df_z) / N) * 100
   gap <- sum(df_z$brecha_rel) / N
   severity <- sum(df_z$brecha_rel_sqr) / N
-  
+
   # Crear el dataframe de salida
   df_w <- data.frame(deciles = decile, rate = rate, gap = gap, severity = severity)
-  
+
   return(df_w)
 })
 
@@ -593,28 +580,28 @@ names(outcome_1_list) <- deciles_grupos
 calculate_outcome <- function(dataset, model, deciles_grupos) {
   z <- as.numeric(levels(as.factor(model$per_capita_year)))
   outcome_list <- list()
-  
+
   for (j in 1:length(deciles_grupos)) {
     df_y <- dataset %>% filter(deciles %in% deciles_grupos[j])
-    
+
     # Crear dummy vectorizado
     df_y$dummy <- ifelse(df_y$per_capita_year < z, 1, 0)
-    
+
     df_z <- df_y %>% filter(dummy == 1)
-    
+
     df_z$brecha_rel <- (z - df_z$per_capita_year) / z
     df_z$brecha_rel_sqr <- df_z$brecha_rel^2
-    
+
     N <- nrow(df_y)
     rate <- (nrow(df_z) / N) * 100
     gap <- sum(df_z$brecha_rel) / N
     severity <- sum(df_z$brecha_rel_sqr) / N
-    
+
     df_w <- data.frame(deciles = deciles_grupos[j], rate = rate, gap = gap, severity = severity)
-    
+
     outcome_list[[j]] <- df_w
   }
-  
+
   names(outcome_list) <- deciles_grupos
   return(outcome_list)
 }
@@ -682,6 +669,7 @@ return(invisible(Resultados))
 
 }
 
+x=Modulos(Month=1, Year=2022,City="Cali")
 
 
 
