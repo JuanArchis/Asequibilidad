@@ -2463,17 +2463,18 @@ Modulo_1 <- function(Month, Year, City) {
                                                                                   "IOF3ES", "IOF6")])) == 0),
                               NA)
 
-  # Cálculo del ingreso total
-  df_total$ingresos <- rowSums(df_total[c("INGES_ASAL",
-                                          "INGES_IND", "INGES_TF",
-                                          "INGES_NO")],
-                               na.rm = T)* NA ^ (rowSums(!is.na(df_total[c("INGES_ASAL",
-                                                                           "INGES_IND", "INGES_TF",
-                                                                           "INGES_NO")])) == 0)
 
-  # Excluir los siguientes ingresos: parentesco con el jefe de hogar como
-  # empleados del servicio doméstico y sus parientes, trabajadores o pensionistas.
-  df_total$ingresos[df_total$ingresos %in% c(6,7,8,9)] = 0
+# Cálculo del ingreso total
+df_total$INGTOT <- rowSums(df_total[c("INGES_ASAL",
+                                      "INGES_IND", "INGES_TF",
+                                      "INGES_NO")],
+                           na.rm = T)* NA ^ (rowSums(!is.na(df_total[c("INGES_ASAL",
+                                                                       "INGES_IND", "INGES_TF",
+                                                                       "INGES_NO")])) == 0)
+
+# Excluir los siguientes ingresos: parentesco con el jefe de hogar como
+# empleados del servicio doméstico y sus parientes, trabajadores o pensionistas.
+df_total$INGTOT[df_total$INGTOT %in% c(6,7,8,9)] = 0
 
   cat("     Finalizado ✓ \n")
 
@@ -2484,17 +2485,16 @@ Modulo_1 <- function(Month, Year, City) {
   dataset_x=df_total
 
   # construccion de base de datos de recepción vacía
-  dataset_2 = data.frame(levels(as.factor(dataset_x$id)))
-  colnames(dataset_2) = "id"
+  dataset_2 = data.frame(levels(as.factor(dataset_x$hogares_id)))
+  colnames(dataset_2) = "hogares_id"
   dataset_2$ingresos = NA
-  hogares_id = levels(as.factor(dataset_2$id))
-
+  hogares_id = levels(as.factor(dataset_2$hogares_id))
 
   # bucle para el cálculo de los ingresos para los hogares
   for (k in 1:length(hogares_id)) {
     df = data.frame()
-    df = dataset_x %>% filter(id %in% hogares_id[k])
-    q = which(dataset_2$id == hogares_id[k])
+    df = dataset_x %>% filter(hogares_id %in% hogares_id[k])
+    q = which(dataset_2$hogares_id == hogares_id[k])
     dataset_2$ingresos[q]= sum(df$ingresos)
   }
 
