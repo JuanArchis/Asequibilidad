@@ -42,7 +42,7 @@ Modulos <- function(Month, Year, City) {
 
 
   # Carga de librerías
-  Librerias_base <- c("here", "readxl", "tidyverse", "knitr", "moments", "maditr", "mice", "VIM", "dplyr", "finalfit", "plyr","hdd","zip","httr","caret","nnet","quantreg","gridExtra","ggpubr","cowplot")
+  Librerias_base <- c("here", "readxl", "tidyverse", "knitr", "moments", "xgboost","maditr", "mice", "VIM", "dplyr", "finalfit", "plyr","hdd","zip","httr","caret","nnet","quantreg","gridExtra","ggpubr","cowplot")
   if (!require("pacman")) install.packages("pacman")
   pacman::p_load(char = Librerias_base, character.only = TRUE)
 
@@ -209,7 +209,7 @@ Modulos <- function(Month, Year, City) {
   # INICIO DEL MÓDULO 2.1: Algoritmo ingreso GEIH #
   #---------------------------------------------#
 
-  Sys.sleep(1);cat("Módulo 2 y 3:   Cálculo ingresos de hogares ")
+  Sys.sleep(1);cat("Módulo 2.1: Aplicando Algoritmo GEIH ")
 
   # Crear una variable para identificar cada módulo
   Ocupados$ocu = 1
@@ -222,7 +222,7 @@ Modulos <- function(Month, Year, City) {
 
   # Omisión de variables
   ocup <- Ocupados %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, FEX_C18, PER, REGIS, FT))
-  Datos_vivi <- Datos_del_hogar_y_la_vivienda %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, FEX_C18, PER, REGIS))
+  Datos_vivi <- Datos_del_hogar_y_la_vivienda %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, PER, REGIS,FEX_C18))
   Noocup <- No_ocupados %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, FEX_C18, PER, REGIS, FFT))
   Ot_ing <- Otros_ingresos_e_impuestos %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, FEX_C18, PER, REGIS))
   Fuerza <- Fuerza_trabajo %>% select(-c(PERIODO, HOGAR, CLASE, AREA, MES, DPTO, FEX_C18, PER, REGIS))
@@ -308,7 +308,6 @@ Modulos <- function(Month, Year, City) {
   #---------------------------------------------#
   #---------------------------------------------#
 
-
   #------------------------------------------#
   #   Módulo 2: Construcción de variables    #
   #------------------------------------------#
@@ -376,7 +375,9 @@ Modulos <- function(Month, Year, City) {
                  "no_ocu",                         # Binaria: no-ocupados
                  "ft",                             # Binaria: fuerza de trabajo
                  "fft",                             # Binaria: fuerza de trabajo
-                 "inglabo"
+                 "inglabo",
+                 "p6008",
+                 "fex_c18"
   )
 
   # Seleccionar variables en la base de datos
@@ -1495,34 +1496,1582 @@ Modulos <- function(Month, Year, City) {
   df_total$outlier_impa[is.na(df_total$outlier_impa)] = 0
 
 
-  return(df_total)
+
+
+  #--------------------------------------------------------------------#
+  #--------------------------------------------------------------------#
+  #   Módulo 5.2: Regresión cuantílica para valores extremos en ISA    #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #--------------------------------------------------------------------#
+  #--------------------------------------------------------------------#
+
+
+  #---------------------------------------------------------------------------#
+  # Valores extremos para el Ingreso Monetario por Segunda Actividad (ISA)    #
+  #---------------------------------------------------------------------------#
+
+  #----------------------------------------#
+  # Construcción de la base de datos input #
+  #----------------------------------------#
+
+  # Selección de variables explicativas
+
+
+
+
+  qr_isa=select(df_total,any_of(c("id", "vf_isa", "ISA", "edad", "edad_sqr", "horas_sa",
+                                  "anios_edu", "bogota", "sexo", "obrero", "domestico", "propia",
+                                  "patrono", "meses_trab","jefe", "n", "n_asala", "n_indep",
+                                  "n_desoc", "n_edad_5", "n_edad_14_17","n_edad_65", "n_edad_25_ne",
+                                  "n_superior", "avg_edu")))
+
+
+  # Para evitar valores negativos en ln(ingresos), se eliminan los valores entre 0 y 1 del ingreso
+  qr_isa <- qr_isa %>% filter(ISA > 1)
+
+  # Omitir valores faltantes para la estimación
+  qr_isa <- qr_isa %>% filter(vf_isa == 0) %>% select(-vf_isa)
+
+  # Nos quedamos con las variables cualitativas cuyos niveles > 1 y las variables
+  # cuantitativas cuya varianza sea diferente de 1
+  qr_isa[c("bogota", "sexo", "obrero", "domestico",
+           "propia", "patrono", "jefe")] <- lapply(qr_isa[c("bogota", "sexo", "obrero", "domestico",
+                                                            "propia", "patrono", "jefe")], factor)
+
+  cvar_isa <- c("edad", "edad_sqr", "horas_sa", "anios_edu", "meses_trab", "n", "n_asala", "n_indep",
+                "n_desoc", "n_edad_5", "n_edad_14_17","n_edad_65", "n_edad_25_ne", "n_superior",
+                "avg_edu")
+
+  var_isa = c("id", "ISA", colnames(qr_isa[, sapply(qr_isa, nlevels) > 1]),
+              colnames(qr_isa[cvar_isa][sapply(qr_isa[cvar_isa], var) != 0]))
+
+  # También se excluye la categoría base: doméstico
+  var_isa2 <- setdiff(var_isa, c("domestico"))
+
+  # Prueba: variables excluidas porque no son estadísticamente significativas
+  var_isa2 <- setdiff(var_isa2, c("bogota","obrero", "propia","patrono", "jefe", "anios_edu",
+                                  "n", "n_indep","n_asala", "n_desoc", "n_edad_5", "n_edad_14_17",
+                                  "n_edad_65", "n_edad_25_ne", "n_superior"))
+
+  # Selección de las nuevas variables  y creación de la variable log(isa)
+  qr_isa <- qr_isa[var_isa2] %>% mutate(ln_isa = log(as.numeric(ISA))) %>% select(-c(ISA))
+
+  #---------------------------------#
+  # Modelos de regresión cuantílica #
+  #---------------------------------#
+
+  # Uso de la función anteriormente  definida para estimar los modelos de regresión cuantílica
+  output_isa <- outliers_qr(input = qr_isa, comp = "ln_isa")
+
+  # Recuperación de la base de datos general. Nueva base de datos general: df_total2
+  df_total <- merge(df_total, output_isa, by = "id", all.x = TRUE)
+
+  # Si no es outlier, entonces 0
+  df_total$outlier_isa[is.na(df_total$outlier_isa)] = 0
+
+
+
+
+  #------------------------------------------------------------#
+  #        Valores extremos para el Ingreso en Especie (IE)    #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------------------#
+
+  #----------------------------------------#
+  # Construcción de la base de datos input #
+  #----------------------------------------#
+
+
+  qr_ie=select(df_total,any_of(c("id", "vf_ie", "IE", "edad",
+                                 "edad_sqr", "horas_pa", "anios_edu","bogota", "sexo", "obrero",
+                                 "domestico", "propia","patrono", "meses_trab",
+                                 "jefe", "n", "n_asala", "n_indep", "n_desoc", "n_edad_5", "n_edad_14_17",
+                                 "n_edad_65", "n_edad_25_ne", "n_superior", "n_salud", "avg_edu")))
+
+  # Para evitar valores negativos en ln(ingresos), se eliminan los valores entre 0 y 1 del ingreso
+  qr_ie <- qr_ie %>% filter(IE > 1)
+
+  # Omitir valores faltantes para la estimación
+  qr_ie <- qr_ie %>% filter(vf_ie == 0) %>% select(-vf_ie)
+
+  # Nos quedamos con las variables cualitativas cuyos niveles > 1 y las variables
+  # cuantitativas cuya varianza sea diferente de 1
+  qr_ie[c("bogota", "sexo", "obrero", "domestico",
+          "propia", "patrono", "jefe")] <- lapply(qr_ie[c("bogota", "sexo", "obrero", "domestico",
+                                                          "propia", "patrono", "jefe")], factor)
+
+  cvar_ie <- c("edad", "edad_sqr", "horas_pa", "anios_edu", "meses_trab", "n", "n_asala", "n_indep",
+               "n_desoc", "n_edad_5", "n_edad_14_17","n_edad_65", "n_edad_25_ne", "n_superior",
+               "avg_edu")
+
+  var_ie = c("id", "IE", colnames(qr_ie[, sapply(qr_ie, nlevels) > 1]),
+             colnames(qr_ie[cvar_ie][sapply(qr_ie[cvar_ie], var) != 0]))
+
+  # También se excluye la categoría base: doméstico
+  var_ie2 <- setdiff(var_ie, c("domestico"))
+
+  # Prueba: variables excluidas porque no son estadísticamente significativas
+  var_ie2 <- setdiff(var_ie2, c("propia", "patrono","n_edad_14_17", "n_edad_65", "n_superior","n_edad_25_ne"))
+
+  # Selección de las nuevas variables  y creación de la variable log(isa)
+  qr_ie <- qr_ie[var_ie2] %>% mutate(ln_ie = log(as.numeric(IE))) %>% select(-c(IE))
+
+  #---------------------------------#
+  # Modelos de regresión cuantílica #
+  #---------------------------------#
+  # Uso de la función anteriormente  definida para estimar los modelos de regresión cuantílica
+  output_ie <- outliers_qr(input = qr_ie, comp = "ln_ie")
+
+
+  # Recuperación de la base de datos general. Nueva base de datos general: df_total2
+  df_total <- merge(df_total, output_ie, by = "id", all.x = TRUE)
+
+  # Si no es outlier, entonces 0
+  df_total$outlier_ie[is.na(df_total$outlier_ie)] = 0
+
+
+
+
+  #-------------------------------------------------------------------#
+  #-------------------------------------------------------------------#
+  #   Módulo 5.4: Regresión cuantílica para valores extremos en IMDI  #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #-------------------------------------------------------------------#
+  #-------------------------------------------------------------------#
+
+
+  #-----------------------------------------------------------------------------------------#
+  #        Valores extremos para el Ingreso Monetarios de Desocupados e Inactivos (IMDI)    #
+  #-----------------------------------------------------------------------------------------#
+
+  #----------------------------------------#
+  # Construcción de la base de datos input #
+  #----------------------------------------#
+  # Selección de variables explicativas
+
+
+  qr_imdi=select(df_total,any_of(c("id", "vf_imdi", "IMDI", "edad",
+                                   "edad_sqr", "anios_edu",
+                                   "bogota", "estu")))
+
+  # Para evitar valores negativos en ln(ingresos), se eliminan los valores entre 0 y 1 del ingreso
+  qr_imdi <- qr_imdi %>% filter(IMDI > 1)
+
+  # Omitir valores faltantes para la estimación
+  qr_imdi <- qr_imdi %>% filter(vf_imdi == 0) %>% select(-vf_imdi)
+
+  # Nos quedamos con las variables cualitativas cuyos niveles > 1 y las variables
+  # cuantitativas cuya varianza sea diferente de 1
+  qr_imdi[c("bogota", "estu")] <- lapply(qr_imdi[c("bogota", "estu")], factor)
+
+  cvar_imdi <- c("edad", "edad_sqr", "anios_edu")
+
+  var_imdi = c("id", "IMDI", colnames(qr_imdi[, sapply(qr_imdi, nlevels) > 1]),
+               colnames(qr_imdi[cvar_imdi][sapply(qr_imdi[cvar_imdi], var) != 0]))
+
+  # No hay exclusiones adicionales de variables
+
+  # Selección de las nuevas variables  y creación de la variable log(isa)
+  qr_imdi <- qr_imdi[var_imdi] %>% mutate(ln_imdi = log(as.numeric(IMDI))) %>% select(-c(IMDI))
+
+  #---------------------------------#
+  # Modelos de regresión cuantílica #
+  #---------------------------------#
+  # Uso de la función anteriormente  definida para estimar los modelos de regresión cuantílica
+  output_imdi <- outliers_qr(input = qr_imdi, comp = "ln_imdi")
+
+  # Recuperación de la base de datos general. Nueva base de datos general: df_total2
+  df_total <- merge(df_total, output_imdi, by = "id", all.x = TRUE)
+
+  # Si no es outlier, entonces 0
+  df_total$outlier_imdi[is.na(df_total$outlier_imdi)] = 0
+
+
+
+
+  #-------------------------------------------------------------------#
+  #-------------------------------------------------------------------#
+  #   Módulo 5.5: Regresión cuantílica para valores extremos en IOF   #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #-------------------------------------------------------------------#
+  #-------------------------------------------------------------------#
+
+
+  #------------------------------------------------------------------------------------#
+  #        Valores extremos para el Ingreso de Otras Fuentes (IOF) para Ocupados (O)   #
+  #------------------------------------------------------------------------------------#
+
+  #------------------------------------------------#
+  # Construcción de la base de datos input general #
+  #------------------------------------------------#
+
+  # Selección de variables explicativas
+  qr_iof_o <- df_total[c("id", "vf_iof1_o", "vf_iof2_o", "vf_iof3_o", "vf_iof6_o",
+                         "IOF1_o", "IOF2_o", "IOF3_o", "IOF6_o","edad", "edad_sqr", "horas_pa",
+                         "anios_edu", "bogota", "sexo", "obrero", "domestico", "propia",
+                         "patrono", "meses_trab","jefe", "n", "n_asala", "n_indep",
+                         "n_desoc", "n_edad_5", "n_edad_14_17","n_edad_65", "n_edad_25_ne", "n_superior",
+                         "n_salud", "avg_edu")]
+
+
+
+  # Nos quedamos con las variables cualitativas cuyos niveles > 1 y las variables
+  # cuantitativas cuya varianza sea diferente de 1
+  qr_iof_o[c("bogota", "sexo", "obrero", "domestico",
+             "propia", "patrono", "jefe")] <- lapply(qr_iof_o[c("bogota", "sexo", "obrero", "domestico",
+                                                                "propia", "patrono", "jefe")], factor)
+
+  cvar_iof_o <- c("edad", "edad_sqr", "horas_pa", "anios_edu", "meses_trab", "n", "n_asala", "n_indep",
+                  "n_desoc", "n_edad_5", "n_edad_14_17","n_edad_65", "n_edad_25_ne", "n_superior",
+                  "n_salud", "avg_edu")
+
+  #------------------------------------------------------------------------#
+  # Construcción de la base de datos input para cada subcomponente del IOF #
+  #------------------------------------------------------------------------#
+
+  ######## IOF 1
+  qr_iof1_o <- qr_iof_o %>% filter(IOF1_o > 1)
+
+  qr_iof1_o <- qr_iof1_o %>% filter(vf_iof1_o == 0) %>% select(-vf_iof1_o)
+
+  var_iof1_o = c("id", "IOF1_o", colnames(qr_iof1_o[, sapply(qr_iof1_o, nlevels) > 1]),
+                 colnames(qr_iof1_o[cvar_iof_o][sapply(qr_iof1_o[cvar_iof_o], var, na.rm = T) != 0]))
+
+  var_iof1_o2 <- setdiff(var_iof1_o, c("domestico"))
+
+  var_iof1_o2 <- setdiff(var_iof1_o2, c("n_edad_14_17","n_edad_65", "n_superior","n_edad_25_ne"))
+
+  qr_iof1_o <- qr_iof1_o[var_iof1_o2] %>% mutate(ln_iof1_o = log(as.numeric(IOF1_o))) %>% select(-c(IOF1_o))
+
+  ########  IOF 2
+  qr_iof2_o <- qr_iof_o %>% filter(IOF2_o > 1)
+
+  qr_iof2_o <- qr_iof2_o %>% filter(vf_iof2_o == 0) %>% select(-vf_iof2_o)
+
+  var_iof2_o = c("id", "IOF2_o", colnames(qr_iof2_o[, sapply(qr_iof2_o, nlevels) > 1]),
+                 colnames(qr_iof2_o[cvar_iof_o][sapply(qr_iof2_o[cvar_iof_o], var, na.rm = T) != 0]))
+
+  var_iof2_o2 <- setdiff(var_iof2_o, c("domestico"))
+
+  var_iof2_o2 <- setdiff(var_iof2_o2, c("n_edad_14_17","n_edad_65", "n_superior","n_edad_25_ne"))
+
+  qr_iof2_o <- qr_iof2_o[var_iof2_o2] %>% mutate(ln_iof2_o = log(as.numeric(IOF2_o))) %>% select(-c(IOF2_o))
+
+
+  ########  IOF 3
+  qr_iof3_o <- qr_iof_o %>% filter(IOF3_o > 1)
+
+  qr_iof3_o <- qr_iof3_o %>% filter(vf_iof3_o == 0) %>% select(-vf_iof3_o)
+
+  var_iof3_o = c("id", "IOF3_o", colnames(qr_iof3_o[, sapply(qr_iof3_o, nlevels) > 1]),
+                 colnames(qr_iof3_o[cvar_iof_o][sapply(qr_iof3_o[cvar_iof_o], var, na.rm = T) != 0]))
+
+  var_iof3_o2 <- setdiff(var_iof3_o, c("domestico"))
+
+  var_iof3_o2 <- setdiff(var_iof3_o2, c("n_edad_14_17","n_edad_65", "n_superior","n_edad_25_ne"))
+
+  qr_iof3_o <- qr_iof3_o[var_iof3_o2] %>% mutate(ln_iof3_o = log(as.numeric(IOF3_o))) %>% select(-c(IOF3_o))
+
+
+
+  ########  IOF 6
+  qr_iof6_o <- qr_iof_o %>% filter(IOF6_o > 1)
+
+  qr_iof6_o <- qr_iof6_o %>% filter(vf_iof6_o == 0) %>% select(-vf_iof6_o)
+
+  var_iof6_o = c("id", "IOF6_o", colnames(qr_iof6_o[, sapply(qr_iof6_o, nlevels) > 1]),
+                 colnames(qr_iof6_o[cvar_iof_o][sapply(qr_iof6_o[cvar_iof_o], var, na.rm = T) != 0]))
+
+  var_iof6_o2 <- setdiff(var_iof6_o, c("domestico"))
+
+  var_iof6_o2 <- setdiff(var_iof6_o2, c("n_edad_14_17","n_edad_65", "n_superior","n_edad_25_ne"))
+
+  qr_iof6_o <- qr_iof6_o[var_iof6_o2] %>% mutate(ln_iof6_o = log(as.numeric(IOF6_o))) %>% select(-c(IOF6_o))
+
+
+
+  #---------------------------------#
+  # Modelos de regresión cuantílica #
+  #---------------------------------#
+
+  ######## IOF 1
+  if (nrow(qr_iof1_o) > ((ncol(qr_iof1_o)-1)*10)) {
+    output_iof1_o <- outliers_qr(input = qr_iof1_o, comp = "ln_iof1_o")
+    df_total <- merge(df_total, output_iof1_o, by = "id", all.x = TRUE)
+    df_total$outlier_iof1_o[is.na(df_total$outlier_iof1_o)] = 0
+
+  } else {
+    df_total$outlier_iof1_o = 0
+  }
+
+
+  ######## IOF 2
+  if (nrow(qr_iof2_o) > ((ncol(qr_iof2_o)-1)*10)) {
+    output_iof2_o <- outliers_qr(input = qr_iof2_o, comp = "ln_iof2_o")
+    df_total <- merge(df_total, output_iof2_o, by = "id", all.x = TRUE)
+    df_total$outlier_iof2_o[is.na(df_total$outlier_iof2_o)] = 0
+
+  } else {
+    df_total$outlier_iof2_o = 0
+  }
+
+
+  ######## IOF 3
+  if (nrow(qr_iof3_o) > ((ncol(qr_iof3_o)-1)*10)) {
+    output_iof3_o <- outliers_qr(input = qr_iof3_o, comp = "ln_iof3_o")
+    df_total <- merge(df_total, output_iof3_o, by = "id", all.x = TRUE)
+    df_total$outlier_iof3_o[is.na(df_total$outlier_iof3_o)] = 0
+
+
+  } else {
+    df_total$outlier_iof3_o = 0
+  }
+
+
+  ######## IOF 6
+  if (nrow(qr_iof6_o) > ((ncol(qr_iof6_o)-1)*10)) {
+    output_iof6_o <- outliers_qr(input = qr_iof6_o, comp = "ln_iof6_o")
+    df_total <- merge(df_total, output_iof6_o, by = "id", all.x = TRUE)
+    df_total$outlier_iof6_o[is.na(df_total$outlier_iof6_o)] = 0
+
+  } else {
+    df_total$outlier_iof6_o = 0
+  }
+
+
+
+
+
+
+  #-------------------------------------------------------------------#
+  #-------------------------------------------------------------------#
+  #   Módulo 5.5: Regresión cuantílica para valores extremos en IOF   #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #-------------------------------------------------------------------#
+  #-------------------------------------------------------------------#
+
+  #-------------------------------------------------------------------------------------------------------------#
+  #        Valores extremos para el Ingreso de Otras Fuentes (IOF) para No-Ocupados (Desocupados e Inactivos)   #
+  #------------------------------------------------------------------------v------------------------------------#
+
+  #------------------------------------------------#
+  # Construcción de la base de datos input general #
+  #------------------------------------------------#
+  # Selección de variables explicativas
+  qr_iof_no <- df_total[c("id", "vf_iof1_no", "vf_iof2_no", "vf_iof3_no", "vf_iof6_no",
+                          "IOF1_no", "IOF2_no", "IOF3_no", "IOF6_no","edad",
+                          "edad_sqr", "anios_edu",
+                          "bogota", "estu")]
+
+  # Nos quedamos con las variables cualitativas cuyos niveles > 1 y las variables
+  # cuantitativas cuya varianza sea diferente de 1
+  qr_iof_no[c("bogota", "estu")] <- lapply(qr_iof_no[c("bogota", "estu")], factor)
+
+  cvar_iof_no <- c("edad", "edad_sqr", "anios_edu")
+
+  #------------------------------------------------------------------------#
+  # Construcción de la base de datos input para cada subcomponente del IOF #
+  #------------------------------------------------------------------------#
+
+  ######## IOF 1
+  qr_iof1_no <- qr_iof_no %>% filter(IOF1_no > 1)
+
+  qr_iof1_no <- qr_iof1_no %>% filter(vf_iof1_no == 0) %>% select(-vf_iof1_no)
+
+  var_iof1_no = c("id", "IOF1_no", colnames(qr_iof1_no[, sapply(qr_iof1_no, nlevels) > 1]),
+                  colnames(qr_iof1_no[cvar_iof_no][sapply(qr_iof1_no[cvar_iof_no], var, na.rm = T) != 0]))
+
+  var_iof1_no2 <- setdiff(var_iof1_no, c("domestico"))
+
+  var_iof1_no2 <- setdiff(var_iof1_no2, c("n_edad_14_17","n_edad_65", "n_superior","n_edad_25_ne"))
+
+  qr_iof1_no <- qr_iof1_no[var_iof1_no2] %>% mutate(ln_iof1_no = log(as.numeric(IOF1_no))) %>% select(-c(IOF1_no))
+
+  ########  IOF 2
+  qr_iof2_no <- qr_iof_no %>% filter(IOF2_no > 1)
+
+  qr_iof2_no <- qr_iof2_no %>% filter(vf_iof2_no == 0) %>% select(-vf_iof2_no)
+
+  var_iof2_no = c("id", "IOF2_no", colnames(qr_iof2_no[, sapply(qr_iof2_no, nlevels) > 1]),
+                  colnames(qr_iof2_no[cvar_iof_no][sapply(qr_iof2_no[cvar_iof_no], var, na.rm = T) != 0]))
+
+  var_iof2_no2 <- setdiff(var_iof2_no, c("domestico"))
+
+  var_iof2_no2 <- setdiff(var_iof2_no2, c("n_edad_14_17","n_edad_65", "n_superior","n_edad_25_ne"))
+
+  qr_iof2_no <- qr_iof2_no[var_iof2_no2] %>% mutate(ln_iof2_no = log(as.numeric(IOF2_no))) %>% select(-c(IOF2_no))
+
+
+  ########  IOF 3
+  qr_iof3_no <- qr_iof_no %>% filter(IOF3_no > 1)
+
+  qr_iof3_no <- qr_iof3_no %>% filter(vf_iof3_no == 0) %>% select(-vf_iof3_no)
+
+  var_iof3_no = c("id", "IOF3_no", colnames(qr_iof3_no[, sapply(qr_iof3_no, nlevels) > 1]),
+                  colnames(qr_iof3_no[cvar_iof_no][sapply(qr_iof3_no[cvar_iof_no], var, na.rm = T) != 0]))
+
+  var_iof3_no2 <- setdiff(var_iof3_no, c("domestico"))
+
+  var_iof3_no2 <- setdiff(var_iof3_no2, c("n_edad_14_17","n_edad_65", "n_superior","n_edad_25_ne"))
+
+  qr_iof3_no <- qr_iof3_no[var_iof3_no2] %>% mutate(ln_iof3_no = log(as.numeric(IOF3_no))) %>% select(-c(IOF3_no))
+
+
+
+  ########  IOF 6
+  qr_iof6_no <- qr_iof_no %>% filter(IOF6_no > 1)
+
+  qr_iof6_no <- qr_iof6_no %>% filter(vf_iof6_no == 0) %>% select(-vf_iof6_no)
+
+  var_iof6_no = c("id", "IOF6_no", colnames(qr_iof6_no[, sapply(qr_iof6_no, nlevels) > 1]),
+                  colnames(qr_iof6_no[cvar_iof_no][sapply(qr_iof6_no[cvar_iof_no], var, na.rm = T) != 0]))
+
+  var_iof6_no2 <- setdiff(var_iof6_no, c("domestico"))
+
+  var_iof6_no2 <- setdiff(var_iof6_no2, c("n_edad_14_17","n_edad_65", "n_superior","n_edad_25_ne"))
+
+  qr_iof6_no <- qr_iof6_no[var_iof6_no2] %>% mutate(ln_iof6_no = log(as.numeric(IOF6_no))) %>% select(-c(IOF6_no))
+
+
+
+  #---------------------------------#
+  # Modelos de regresión cuantílica #
+  #---------------------------------#
+
+  ######## IOF 1
+  if (nrow(qr_iof1_no) > ((ncol(qr_iof1_no)-1)*10)) {
+    output_iof1_no <- outliers_qr(input = qr_iof1_no, comp = "ln_iof1_no")
+    df_total <- merge(df_total, output_iof1_no, by = "id", all.x = TRUE)
+    df_total$outlier_iof1_no[is.na(df_total$outlier_iof1_no)] = 0
+
+  } else {
+    df_total$outlier_iof1_no = 0
+  }
+
+  ######## IOF 2
+  if (nrow(qr_iof2_no) > ((ncol(qr_iof2_no)-1)*10)) {
+    output_iof2_no <- outliers_qr(input = qr_iof2_no, comp = "ln_iof2_no")
+    df_total <- merge(df_total, output_iof2_no, by = "id", all.x = TRUE)
+    df_total$outlier_iof2_no[is.na(df_total$outlier_iof2_no)] = 0
+
+  } else {
+    df_total$outlier_iof2_no = 0
+  }
+
+  ######## IOF 3
+  if (nrow(qr_iof3_no) > ((ncol(qr_iof3_no)-1)*10)) {
+    output_iof3_no <- outliers_qr(input = qr_iof3_no, comp = "ln_iof3_no")
+    df_total <- merge(df_total, output_iof3_no, by = "id", all.x = TRUE)
+    df_total$outlier_iof3_no[is.na(df_total$outlier_iof3_no)] = 0
+
+  } else {
+    df_total$outlier_iof3_no = 0
+  }
+
+  ######## IOF 6
+  if (nrow(qr_iof6_no) > ((ncol(qr_iof6_no)-1)*10)) {
+    output_iof6_no <- outliers_qr(input = qr_iof6_no, comp = "ln_iof6_no")
+    df_total <- merge(df_total, output_iof6_no, by = "id", all.x = TRUE)
+    df_total$outlier_iof6_no[is.na(df_total$outlier_iof6_no)] = 0
+
+  } else {
+    df_total$outlier_iof6_no = 0
+  }
+
+
+
+  #---------------------------------------------------------------------------#
+  #---------------------------------------------------------------------------#
+  #   Módulo 6: Modelos de clasificación para la detección de falsos ceros    # ------------------------------------------------------------------------------------------------------------------------------
+  #---------------------------------------------------------------------------#
+  #---------------------------------------------------------------------------#
+
+
+  #----------------------------------------------------------------#
+  # Preparación de base de datos para el modelo de clasificación   #
+  #----------------------------------------------------------------#
+  # Excluir NAs para IMPA y se excluyen los outliers identificados en las regresiones cuantílicas
+  sl_data <- df_total %>% filter(!is.na(IMPA))
+  sl_data <- sl_data %>% filter(outlier_impa == 0)
+  sl_data <- sl_data %>% filter(vf_impa == 0)
+
+  # Creación de la variable para clasificación (IMPA no es cero, IMPA es cero)
+  sl_data$class_0 <- ifelse(sl_data$IMPA == 0, "Cero impa", "No-cero impa")
+
+  # Recodificar la variable dependiente
+  sl_data$class_0 <- recode(sl_data$class_0,"Cero impa" = '0', "No-cero impa" = '1') %>% as.numeric()
+
+  # Selección de variables
+  sl_var <- c("id", "edad", "edad_sqr", "horas_pa", "anios_edu", "bogota", "sexo", "obrero", "domestico", "propia",
+              "patrono", "meses_trab","jefe", "n", "n_asala", "n_indep", "n_desoc", "n_edad_5", "n_edad_14_17","n_edad_65",
+              "n_edad_25_ne", "n_superior","n_salud", "avg_edu")
+
+  sl_input <- sl_data[c(sl_var,"class_0")]
+
+  #-------------------------------------------------------------#
+  #     Base de datos input: modelo de clasificación            #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #-------------------------------------------------------------#
+
+  # Nos quedamos con las variables cualitativas cuyos niveles > 1 y las variables
+  # cuantitativas cuya varianza sea diferente de 1
+  sl_input[c("bogota", "sexo", "obrero", "domestico",
+             "propia", "patrono", "jefe")] <- lapply(sl_input[c("bogota", "sexo", "obrero", "domestico",
+                                                                "propia", "patrono", "jefe")], factor)
+
+  sl_cvar <- c("edad", "edad_sqr", "horas_pa", "anios_edu", "meses_trab", "n", "n_asala", "n_indep",
+               "n_desoc", "n_edad_5", "n_edad_14_17","n_edad_65", "n_edad_25_ne", "n_superior",
+               "n_salud", "avg_edu")
+
+  sl_var2 = c("class_0",colnames(sl_input[, sapply(sl_input, nlevels) > 1]),
+              colnames(sl_input[cvar_impa][sapply(sl_input[cvar_impa], var) != 0]))
+
+  # También se excluye la categoría base: doméstico
+  sl_var2 <- setdiff(sl_var2, c("domestico"))
+
+  # Base de datos de entrada para el modelo de clasificación
+  sl_input <- sl_input[sl_var2]
+
+  #-------------------------------------------------------------#
+  #     Implementación del modelo de clasificación XGBoost      #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #-------------------------------------------------------------#
+
+  #-------------------------------------------------------------#
+  #     Guardar matriz de confusión: algoritmo XGBoost          #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #-------------------------------------------------------------#
+  folds1 <- createFolds(sl_input$class_0, k = 10)
+  x <- folds1$Fold01
+
+  train.df1 = sl_input[-x, ]
+  test.df1 = sl_input[x,]
+
+  set.seed(7443)
+  class.fit1 <- train(factor(class_0) ~ .,
+                      method = "xgbTree", data = train.df1,
+                      trControl = trainControl(method = "cv", number = 1))
+
+  Predicted1 = predict(class.fit1, sl_input)
+
+  cm1 = caret::confusionMatrix(Predicted1, as.factor(sl_input$class_0))
+
+
+  #-----------------------------------------------------------------#
+  #     Guardar matriz de confusión: modelo logit multinomial (MNL) #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #-----------------------------------------------------------------#
+  folds2 <- createFolds(sl_input$class_0, k = 10)
+  x <- folds2$Fold01
+
+  train.df2 = sl_input[-x, ]
+  test.df2 = sl_input[x,]
+
+  set.seed(7445)
+  class.fit2 <- multinom(factor(class_0) ~ ., data = train.df2)
+
+  Predicted2 = predict(class.fit2, sl_input)
+  cm2 = caret::confusionMatrix(Predicted1, as.factor(sl_input$class_0))
+
+
+  #------------------------------------------------#
+  # Ajustar el resultado en la base de datos final #
+  #------------------------------------------------#
+  # Mantenemos los resultados del algoritmo XGBoost
+  predicted_sl_data <- cbind(sl_data, data.frame(predicted_class_0 = Predicted1))
+
+  predicted_sl_data$falso_cero <- ifelse(predicted_sl_data$class_0 == 0 &
+                                           (predicted_sl_data$class_0 != predicted_sl_data$predicted_class_0), 1, 0)
+
+
+  # El resultado es incorporado a la base de datos general
+  df_total <- merge(df_total, predicted_sl_data[c("id", "class_0", "predicted_class_0", "falso_cero")],
+                    by = "id", all.x = TRUE)
+
+
+
+
+
+  #------------------------------------------------#
+  #------------------------------------------------#
+  #   Módulo 7: Definición de valores a imputar    #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------#
+  #------------------------------------------------#
+
+  # Así, los valores a imputar son determinados según alguna de las siguiente tres condiciones:
+
+  # 1. Fue identificado como un valor faltante en el Módulo 4
+  # 2. Fue identificado como un valor extremo en el Módulo 5
+  # 3. Fue identificado como un "falso cero" en IMPA según el Módulo 6
+
+  # Ejecutar los módulos anteriores:
+
+  #--------------------------------#
+  # IMPA: valores para imputar     #
+  #--------------------------------#
+  df_total$imp_impa <- ifelse((df_total$vf_impa == 1 |
+                                 df_total$outlier_impa == 1 |
+                                 df_total$falso_cero == 1), 1, 0)
+  #--------------------------------#
+  # ISA: valores para imputar      #
+  #--------------------------------#
+  df_total$imp_isa <- ifelse((df_total$vf_isa == 1 |
+                                df_total$outlier_isa == 1), 1, 0)
+
+  #--------------------------------#
+  # IE: valores para imputar       #
+  #--------------------------------#
+  df_total$imp_ie <- ifelse((df_total$vf_ie == 1 |
+                               df_total$outlier_ie == 1), 1, 0)
+
+  #--------------------------------#
+  # IMDI: valores para imputar     #
+  df_total$imp_imdi <- ifelse((df_total$vf_imdi == 1 |
+                                 df_total$outlier_imdi == 1), 1, 0)
+
+  #---------------------------------------------------#
+  # IOF: valores para imputar (RESULTADO PARCIAL)     #
+
+  # NOTA IMPORTANTE: Respecto del componente IOF, los resultados se descomponen en cuatro
+  # fuentes de ingresos: IOF1, IOF2, IOF3 e IOF6
+
+  # Ingreso de Otras Fuentes (IOF) 1 para Ocupados y No-Ocupados
+  df_total$imp_iof1 <- ifelse((df_total$vf_iof1_o == 1 | df_total$vf_iof1_no == 1) |
+                                (df_total$outlier_iof1_o == 1 | df_total$outlier_iof1_no == 1), 1, 0)
+
+  # Ingreso de Otras Fuentes (IOF) 2 para Ocupados y No-Ocupados
+  df_total$imp_iof2 <- ifelse((df_total$vf_iof2_o == 1 | df_total$vf_iof2_no == 1) |
+                                (df_total$outlier_iof2_o == 1 | df_total$outlier_iof2_no == 1), 1, 0)
+
+  # Ingreso de Otras Fuentes (IOF) 3 para Ocupados y No-Ocupados
+  df_total$imp_iof3 <- ifelse((df_total$vf_iof3_o == 1 | df_total$vf_iof3_no == 1) |
+                                (df_total$outlier_iof3_o == 1 | df_total$outlier_iof3_no == 1), 1, 0)
+
+  # Ingreso de Otras Fuentes (IOF) 1 para Ocupados y No-Ocupados
+  df_total$imp_iof6 <- ifelse((df_total$vf_iof6_o == 1 | df_total$vf_iof6_no == 1 |
+                                 (df_total$outlier_iof6_o == 1 | df_total$outlier_iof6_no == 1)), 1, 0)
+
+
+
+  #------------------------------------------------#
+  #------------------------------------------------#
+  #   Módulo 8: Método de imputación múltiple      #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------#
+  #------------------------------------------------#
+
+  #-----------------------------------#
+  #   Creación de dominios (celdas)   #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #-----------------------------------#
+
+  # Dominio por territorio
+  df_total$dom_terr = 1
+  df_total$dom_terr[df_total$dominio %in% c("BOGOTA","MEDELLIN","CALI","BARRANQUILLA",
+                                            "BUCARAMANGA","MANIZALES", "PEREIRA",
+                                            "CUCUTA","PASTO","IBAGUE",
+                                            "MONTERIA","CARTAGENA","VILLAVICENCIO")] = 2
+  df_total$dom_terr[df_total$dominio %in% c("RESTO URBANO","RURAL")] = 3
+
+  # Dominio por estrato
+  df_total$dom_estrato <- ifelse((df_total$estrato %in% c(9,1,0)) |
+                                   (is.na(df_total$estrato)), 0, df_total$estrato)
+
+  # Dominio de la edad
+  df_total <- df_total %>% mutate(dom_edad = cut(edad, c(c(0, 18, 25, 46), Inf),
+                                                 right = F,
+                                                 labels = c(1:4)))
+
+  # Dominio de la educación
+  df_total$dom_edu <- 0
+  df_total$dom_edu[as.numeric(df_total$p3042) %in% c(1,2,3,99)] = 1
+  df_total$dom_edu[as.numeric(df_total$p3042) %in% c(4,5,6)] = 2
+  df_total$dom_edu[as.numeric(df_total$p3042) %in% c(7,8,9,10,11,12,13)] = 3
+
+  # Dominio de la posición ocupacional
+  df_total$dom_pos <- 0
+  df_total$dom_pos[as.numeric(df_total$p6430) %in% c(1,2)] = 1
+  df_total$dom_pos[as.numeric(df_total$p6430) %in% c(3,6)] = 2
+  df_total$dom_pos[as.numeric(df_total$p6430) %in% c(7)] = 3
+  df_total$dom_pos[as.numeric(df_total$p6430) %in% c(4,8)] = 4
+  df_total$dom_pos[as.numeric(df_total$p6430) %in% c(5)] = 5
+  df_total$dom_pos[as.numeric(df_total$p6430) %in% c(9)] = 6
+
+  # Dominio de las horas de primera actividad
+  df_total <- df_total %>% mutate(dom_horas = cut(horas_pa, c(c(0, 24), Inf),
+                                                  right = T,
+                                                  labels = c(1,2)))
+
+  #----------------------------------------------------#
+  # Definición de la función para la imputación simple #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #----------------------------------------------------#
+
+  comp_f <- function(original, var, dom, y.bp, x.hist, y.hist , xy.min.box, xy.max.box,
+                     logical1, logical2,
+                     logical3, logical4){
+
+    # Definiciones:
+    # i = variable binaria para indicar que se trata de un valor a imputar
+    # vn1 = valor no imputado nuevo
+    # vi1 = valor imputado nuevo
+
+    # Creación de dataset base
+    df.base <- original %>% select(c("id", logical1, logical2, logical3, logical4, dom,
+                                     toupper(var), paste0("imp_",var)))
+
+    # Crear variable para los valores a imputar
+    df.base$i <- unlist(df.base[paste0("imp_",var)])
+
+    # Crear variables faltantes según los valores calculados por el algoritmo
+    df.base$vn1 <- unlist(df.base[toupper(var)])
+
+    # Imponer condición para cada caso
+    df.base <- df.base %>% filter(eval(parse(text = logical1)) == 1 | eval(parse(text = logical2)) == 1|
+                                    eval(parse(text = logical3)) == 1 |
+                                    eval(parse(text = logical4)) == 1)
+
+    # Eliminar variables para la condición lógica
+    df.base <- df.base %>% select(-c(logical1, logical2, logical3, logical4))
+
+    # Crear variables faltantes según la varible imp_impa
+    df.base$vn1 <-ifelse(df.base$i == 1, NA, df.base$vn1)
+
+    imputed.df <- VIM::hotdeck(df.base %>% select(id, vn1,
+                                                  dom),
+                               variable = "vn1", domain_var = dom)
+
+    # Cambiar el nombre de la variable imputada
+    colnames(imputed.df)[which(colnames(imputed.df) == "vn1")] = "vi1"
+
+    # Definición de los gráficos en bucle
+    df.aux <- merge(df.base[c("id", "vn1")],
+                    imputed.df[c("id","vi1")], by = "id", all.x = T)
+
+    df.aux <- df.aux[c("id", "vn1", "vi1")]
+    colnames(df.aux) = c("id", "VN1","VI1")
+
+    plot.aux <- melt(df.aux, id.vars = "id")
+
+    plot.aux$value = plot.aux$value/1000
+
+    vlines.aux <- plot.aux %>% group_by(variable) %>% summarize(Mean = round(mean(value, na.rm = T),1),
+                                                                Sd = round(sd(value, na.rm = T),1),
+                                                                Median = round(median(value, na.rm = T),1),
+                                                                Q1 = round(quantile(value, 0.25, na.rm = T),1),
+                                                                Q3 = round(quantile(value, 0.75, na.rm = T),1))
+
+
+
+    output <- imputed.df
+
+    return(output)
+
+  }
+
+  #------------------------------------------------#
+  # Ingreso monetario por Primera Actividad (IMPA) #--------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------#
+
+  # Definición del dominio
+  df_total$llave_impa <- (as.numeric(df_total$dom_terr)*100000) + (as.numeric(df_total$dom_edad)*10000) +
+    (as.numeric(df_total$dom_edu)*1000) + (as.numeric(df_total$dom_pos)*100) +
+    (as.numeric(df_total$sexo)*10) + (as.numeric(df_total$jefe))
+
+  # Imputación
+  impa_output <- comp_f(original = df_total, var = "impa",
+                        dom = "llave_impa",
+                        logical1 = "asalariado", logical2 = "independiente",
+                        logical3 = "trab_familiares", logical4 = "asalariado",
+                        y.bp = c(0, 7500), x.hist = c(0, 7500), y.hist = c(0, 0.0009),
+                        xy.min.box = c(4000, 0.0006), xy.max.box = c(4500, 0.00065))
+  imputed_impa <- impa_output
+  colnames(imputed_impa)[which(colnames(imputed_impa) == "vi1")] = "IMPAES"
+  df_total <- merge(df_total, imputed_impa[c("id","IMPAES")], by = "id", all.x = T)
+
+
+
+  #------------------------------------------------#
+  # Ingreso monetario por Segunda Actividad (ISA)  #--------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------#
+
+  # Definición del dominio
+  df_total$llave_isa <- (as.numeric(df_total$dom_terr)*1000) + (as.numeric(df_total$dom_edad)*100) + (as.numeric(df_total$edu)*10) + (as.numeric(df_total$dom_horas))
+
+  # Imputación
+  isa_output <- comp_f(original = df_total, var = "isa",
+                       dom = "llave_isa",
+                       logical1 = "asalariado", logical2 = "independiente",
+                       logical3 = "trab_familiares", logical4 = "asalariado",
+                       y.bp = c(0, 5000), x.hist = c(0, 5000), y.hist = c(0, 0.00003),
+                       xy.min.box = c(2000, 0.000020), xy.max.box = c(4000, 0.000025))
+
+
+  imputed_isa <- isa_output
+  colnames(imputed_isa)[which(colnames(imputed_isa) == "vi1")] = "ISAES"
+  df_total <- merge(df_total, imputed_isa[c("id","ISAES")], by = "id", all.x = T)
+
+
+  #---------------------------------------#
+  # Ingreso en Especie (IE)               #--------------------------------------------------------------------------------------------------------------------------
+  #---------------------------------------#
+  # Definición del dominio
+  df_total$llave_ie <- (as.numeric(df_total$dom_terr)*100) + (as.numeric(df_total$dom_pos)*10) + (as.numeric(df_total$sexo))
+
+  # Imputación
+  ie_output <- comp_f(original = df_total, var = "ie",
+                      dom = "llave_ie", y.bp = c(0, 100),
+                      x.hist = c(0, 100), y.hist = c(0, 0.2), xy.min.box = c(50, 0.1),
+                      xy.max.box = c(100, 0.15),
+                      logical1 = "asalariado", logical2 = "asalariado",
+                      logical3 = "asalariado", logical4 = "asalariado")
+  imputed_ie <- ie_output
+  colnames(imputed_ie)[which(colnames(imputed_ie) == "vi1")] = "IEES"
+  df_total <- merge(df_total, imputed_ie[c("id","IEES")], by = "id", all.x = T)
+
+
+
+  #--------------------------------#
+  # IMDI: valores para imputar     #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #--------------------------------#
+  # Definición de actividad: Cesante-Aspirante, Desocupado, Estudiante, Hogar
+  df_total$llave_imdi <- (as.numeric(df_total$dom_terr)*100) + (as.numeric(df_total$dom_estrato)*10) + df_total$p6240
+
+  test <- df_total %>% select(dom_terr, p6240, des_ina,
+                              llave_imdi) %>% filter(des_ina == 1)
+
+  imdi_output <- comp_f(original = df_total, var = "imdi",
+                        dom = "llave_imdi", y.bp = c(0, 5000),
+                        x.hist = c(0, 5000), y.hist = c(0,0.002),
+                        xy.min.box = c(2000, 0.00068),
+                        xy.max.box = c(4000, 0.00078),
+                        logical1 = "des_ina", logical2 = "des_ina",
+                        logical3 = "des_ina", logical4 = "des_ina")
+
+  imputed_imdi <- imdi_output
+  colnames(imputed_imdi)[which(colnames(imputed_imdi) == "vi1")] = "IMDIES"
+  df_total <- merge(df_total, imputed_imdi[c("id","IMDIES")], by = "id", all.x = T)
+
+
+  #--------------------------------#
+  # IOF1: valores para imputar     #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #--------------------------------#
+  df_total$llave_iof1 <- (as.numeric(df_total$dom_terr)*100) + (as.numeric(df_total$dom_pos)*10) + (as.numeric(df_total$p6240))
+
+  iof1_output <- comp_f(original = df_total,
+                        dom = "llave_iof1",
+                        var = "iof1", y.bp = c(0, 3),
+                        x.hist = c(0, 3), y.hist = c(0,2.5), xy.min.box = c(1, 1.5),
+                        xy.max.box = c(1, 2),
+                        logical1 = "asalariado", logical2 = "independiente",
+                        logical3 = "trab_familiares", logical4 = "des_ina")
+
+  imputed_iof1 <- iof1_output
+
+  colnames(imputed_iof1)[which(colnames(imputed_iof1) == "vi1")] = "IOF1ES"
+  df_total <- merge(df_total, imputed_iof1[c("id","IOF1ES")], by = "id", all.x = T)
+
+
+  #--------------------------------#
+  # IOF2: valores para imputar     #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #--------------------------------#
+  df_total$llave_iof2 <- (as.numeric(df_total$dom_terr)*100) + (as.numeric(df_total$dom_pos)*10) + (as.numeric(df_total$p6240))
+
+  iof2_output <- comp_f(original = df_total,
+                        dom = "llave_iof2",
+                        var = "iof2", y.bp = c(0, 3),
+                        x.hist = c(0, 3), y.hist = c(0,2.5), xy.min.box = c(1 , 1.5),
+                        xy.max.box = c(1, 2),
+                        logical1 = "asalariado", logical2 = "independiente",
+                        logical3 = "trab_familiares", logical4 = "des_ina")
+  imputed_iof2 <- iof2_output
+
+  colnames(imputed_iof2)[which(colnames(imputed_iof2) == "vi1")] = "IOF2ES"
+  df_total <- merge(df_total, imputed_iof2[c("id","IOF2ES")], by = "id", all.x = T)
+
+
+  #--------------------------------#
+  # IOF3: valores para imputar     #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #--------------------------------#
+  df_total$llave_iof3 <- (as.numeric(df_total$dom_terr)*100) + (as.numeric(df_total$dom_pos)*10) + (as.numeric(df_total$p6240))
+
+  iof3_output <- comp_f(original = df_total,
+                        dom = "llave_iof3",
+                        var = "iof3", y.bp = c(0, 500),
+                        x.hist = c(0, 800), y.hist = c(0,0.02),
+                        xy.min.box = c(450, 0.010),
+                        xy.max.box = c(600, 0.015),
+                        logical1 = "asalariado", logical2 = "independiente",
+                        logical3 = "trab_familiares", logical4 = "des_ina")
+  imputed_iof3 <- iof3_output
+  colnames(imputed_iof3)[which(colnames(imputed_iof3) == "vi1")] = "IOF3ES"
+  df_total <- merge(df_total, imputed_iof3[c("id","IOF3ES")], by = "id", all.x = T)
+
+
+  #--------------------------------#
+  # IOF6: valores para imputar     #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  #--------------------------------#
+  df_total$llave_iof6 <- (as.numeric(df_total$dom_terr)*100) + (as.numeric(df_total$dom_pos)*10) + (as.numeric(df_total$p6240))
+
+  iof6_output <- comp_f(original = df_total,
+                        dom = "llave_iof6",
+                        var = "iof6", y.bp = c(0, 5000),
+                        x.hist = c(0,5000), y.hist = c(0,0.005),
+                        xy.min.box = c(2500, 0.003),
+                        xy.max.box = c(3000, 0.004),
+                        logical1 = "asalariado", logical2 = "independiente",
+                        logical3 = "trab_familiares", logical4 = "des_ina")
+  imputed_iof6 <- iof6_output
+  colnames(imputed_iof6)[which(colnames(imputed_iof6) == "vi1")] = "IOF6ES"
+  df_total <- merge(df_total, imputed_iof6[c("id","IOF6ES")], by = "id", all.x = T)
+
+
+
+
+  #------------------------------------------------#
+  #------------------------------------------------#
+  #   Módulo 8.1: Comparación ingresos imputados   #
+  #------------------------------------------------#
+  #------------------------------------------------#
+
+  # Las pruebas sugieren que se omite la variable IOF6ES (se usa IOF6)
+
+
+  df_total <- df_total %>% filter(dominio == "CALI")
+
+  # Ingresos de asalariados
+  df_total$INGES_ASAL <- ifelse(df_total$asalariado == 1,
+                                rowSums(df_total[c("IMPAES", "IEES",
+                                                   "ISA", "IOF1", "IOF2",
+                                                   "IOF3ES", "IOF6")],
+                                        na.rm = T)* NA ^ (rowSums(!is.na(df_total[c("IMPAES", "IEES",
+                                                                                    "ISA", "IOF1", "IOF2",
+                                                                                    "IOF3ES", "IOF6")])) == 0),
+                                NA)
+
+  # Ingresos de independientes
+  df_total$INGES_IND <- ifelse(df_total$independiente == 1,
+                               rowSums(df_total[c("IMPAES",
+                                                  "ISA", "IOF1", "IOF2",
+                                                  "IOF3ES", "IOF6")],
+                                       na.rm = T)* NA ^ (rowSums(!is.na(df_total[c("IMPAES",
+                                                                                   "ISA", "IOF1", "IOF2",
+                                                                                   "IOF3ES", "IOF6")])) == 0),
+                               NA)
+
+  # Ingresos de trabajadores familiares
+  df_total$INGES_TF <- ifelse(df_total$trab_familiares == 1,
+                              rowSums(df_total[c("ISA", "IOF1", "IOF2",
+                                                 "IOF3ES", "IOF6")],
+                                      na.rm = T)* NA ^ (rowSums(!is.na(df_total[c("ISA", "IOF1", "IOF2",
+                                                                                  "IOF3ES", "IOF6")])) == 0),
+                              NA)
+
+  # Ingreso de desocupados e inactivos
+  df_total$INGES_NO <- ifelse(df_total$des_ina == 1,
+                              rowSums(df_total[c("IMDI", "IOF1", "IOF2",
+                                                 "IOF3ES", "IOF6")],
+                                      na.rm = T)* NA ^ (rowSums(!is.na(df_total[c("IMDI", "IOF1", "IOF2",
+                                                                                  "IOF3ES", "IOF6")])) == 0),
+                              NA)
+
+  # Cálculo del ingreso total
+  df_total$ingresos <- rowSums(df_total[c("INGES_ASAL",
+                                        "INGES_IND", "INGES_TF",
+                                        "INGES_NO")],
+                             na.rm = T)* NA ^ (rowSums(!is.na(df_total[c("INGES_ASAL",
+                                                                         "INGES_IND", "INGES_TF",
+                                                                         "INGES_NO")])) == 0)
+
+  # Excluir los siguientes ingresos: parentesco con el jefe de hogar como
+  # empleados del servicio doméstico y sus parientes, trabajadores o pensionistas.
+  df_total$ingresos[df_total$ingresos %in% c(6,7,8,9)] = 0
+
+  cat("     Finalizado ✓ \n")
+
+
+  Sys.sleep(1);cat("Módulo 2 y 3:   Cálculo ingresos de hogares ")
+
+
+  dataset_x=df_total
+
+  # construccion de base de datos de recepción vacía
+  dataset_2 = data.frame(levels(as.factor(dataset_x$id)))
+  colnames(dataset_2) = "id"
+  dataset_2$ingresos = NA
+  hogares_id = levels(as.factor(dataset_2$id))
+
+
+  # bucle para el cálculo de los ingresos para los hogares
+  for (k in 1:length(hogares_id)) {
+    df = data.frame()
+    df = dataset_x %>% filter(id %in% hogares_id[k])
+    q = which(dataset_2$id == hogares_id[k])
+    dataset_2$ingresos[q]= sum(df$ingresos)
+  }
+
+  # incluir la variable de tamaño de los hogares
+  dataset_2 = merge(dataset_2, dataset_x[c("id", "p6008", "fex_c18")], by ="id")
+  dataset_2 = dataset_2[!duplicated(dataset_2),]
+  # remover bases de datos
+
+  dataset_def= dataset_2  %>% filter(!ingresos  %in% 98)
+  # eliminar hogares con ingresos 0
+  dataset_def= dataset_2  %>% filter(!ingresos  %in% 0)
+
+  #-----------------------------#
+  # INICIO DEL MÓDULO 3 ORGINAL #
+  #-----------------------------#
+
+  gastos_ingresos_exp <- dataset_2 %>%
+    dplyr::slice(rep(1:n(), times = dataset_2$fex_c18)) %>%
+    na.omit()
+
+  gastos_ingresos_exp$per_capita = gastos_ingresos_exp$ingresos/gastos_ingresos_exp$p6008
+  dataset_def_deciles = gastos_ingresos_exp %>% mutate(deciles = ntile(per_capita, 10))
+  dataset_def_deciles$deciles = revalue(as.factor(dataset_def_deciles$deciles),
+                                        c("1" = "Decil 1", "2" = "Decil 2",
+                                          "3" = "Decil 3", "4" = "Decil 4",
+                                          "5" = "Decil 5", "6" = "Decil 6",
+                                          "7" = "Decil 7", "8" = "Decil 8",
+                                          "9" = "Decil 9", "10" = "Decil 10"))
+  #-------------------------------------------------#
+  #               Tabla de resumen:                 #
+  #    ingreso (mean & max.) y gasto (mean & max.)  #
+  #-------------------------------------------------#
+  geih_ingresos = dataset_def_deciles
+  dataset_def_deciles = dataset_def_deciles
+  # Hallar el ingreso promedio por decil
+  deciles_grupos = c("Decil 1", "Decil 2",
+                     "Decil 3", "Decil 4",
+                     "Decil 5", "Decil 6",
+                     "Decil 7", "Decil 8",
+                     "Decil 9", "Decil 10")
+
+  cat("     Finalizado ✓ \n")
+
+  #----------------------------------------------------------------------------------#
+  #    Modulo 2: Proporcion del gasto en alimentación -ECV                           #
+  #----------------------------------------------------------------------------------#
+
+  Sys.sleep(1);cat("Módulo 4:  Proporcion del gasto en alimentación ")
+
+  # Verificar si el entorno data_ECV existe y si Año es 2022
+  if (!exists("data_ECV")) {
+    data_ECV <- new.env(parent = emptyenv())
+  }
+
+  if (!exists("envr_name", envir = data_ECV)) {
+    envr_name <- "data_ECV_env"
+    assign(envr_name, new.env(parent = emptyenv()), envir = data_ECV)
+  }
+
+  if (Year == 2022) {
+    url_gastos_hogares <- "https://microdatos.dane.gov.co/index.php/catalog/793/download/22594"
+    url_caracteristica_hogar <- "https://microdatos.dane.gov.co/index.php/catalog/793/download/22586"
+    url_vivienda <- "https://microdatos.dane.gov.co/index.php/catalog/793/download/22591"
+    url_servicios <- "https://microdatos.dane.gov.co/index.php/catalog/793/download/22597"
+
+    # Lista de URLs y nombres de variables
+    urls <- list(
+      gastos_hogares = url_gastos_hogares,
+      hogares = url_caracteristica_hogar,
+      vivienda = url_vivienda,
+      servicios = url_servicios
+    )
+  }
+  # Función para descargar y extraer archivos ZIP
+  download_and_extract <- function(url, temp_folder) {
+    temp_zip <- tempfile(fileext = ".zip")
+    GET(url, write_disk(temp_zip, overwrite = TRUE), timeout(1000))
+
+    if (.Platform$OS.type == "windows") {
+      unzip_command <- sprintf('powershell -Command "Expand-Archive -LiteralPath \'%s\' -DestinationPath \'%s\' > $null 2>&1"', temp_zip, temp_folder)
+      system(unzip_command, wait = TRUE)
+    } else {
+      system2("unzip", c(temp_zip, "-d", temp_folder), stdout = NULL, stderr = NULL)
+    }
+
+    archivos_csv <- list.files(temp_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
+    return(archivos_csv)
+  }
+
+  # Función para detectar el delimitador
+  detect_delimiter <- function(file_path) {
+    first_lines <- readLines(file_path, n = 5)
+    delimiter <- ifelse(sum(grepl(",", first_lines)) > sum(grepl(";", first_lines)), ",", ";")
+    return(delimiter)
+  }
+
+  # Descargar y procesar los archivos
+  for (name in names(urls)) {
+    url <- urls[[name]]
+    temp_folder <- file.path(tempdir(), name)
+    dir.create(temp_folder)
+    csv_files <- download_and_extract(url, temp_folder)
+
+    for (csv_file in csv_files) {
+      delimiter <- detect_delimiter(csv_file)
+      data <- read.csv(csv_file, sep = delimiter)
+      assign(name, data, envir = get(envr_name, envir = data_ECV))
+    }
+  }
+
+  # Acceder a las variables asignadas en el entorno data_ECV_env
+  gastos_hogares <- get("gastos_hogares", envir = get(envr_name, envir = data_ECV))
+  hogares <- get("hogares", envir = get(envr_name, envir = data_ECV))
+  vivienda <- get("vivienda", envir = get(envr_name, envir = data_ECV))
+  servicios <- get("servicios", envir = get(envr_name, envir = data_ECV))
+
+
+
+  cat("     Finalizado ✓ \n")
+
+  Sys.sleep(1);cat("Módulo VACIO ")
+
+  # Restricción de la información a Cali (tamaño de muestra n = 3338)
+  vivienda_cali = vivienda %>% filter(P1_DEPARTAMENTO %in% 76)
+  vivienda_cali = vivienda_cali %>% filter(CLASE %in% 1)
+  gastos_hogares_cali = gastos_hogares %>% filter(DIRECTORIO %in% vivienda_cali$DIRECTORIO)
+  servicios_cali = servicios %>% filter(DIRECTORIO %in% vivienda_cali$DIRECTORIO)
+
+  # Selección de las variables de interés
+  vivienda_cali_1 = vivienda_cali[c("DIRECTORIO", "SECUENCIA_ENCUESTA", "SECUENCIA_P",
+                                    "ORDEN", "P1_DEPARTAMENTO", "CLASE", "FEX_C",
+                                    "CANT_HOG_COMPLETOS", "CANT_HOGARES_VIVIENDA")]
+
+  gastos_hogares_cali_1 = gastos_hogares_cali[c("DIRECTORIO", "SECUENCIA_ENCUESTA", "SECUENCIA_P",
+                                                "ORDEN", "FEX_C", "P3204", "P3204S1", "P3204S2")]
+
+  servicios_cali_1 = servicios_cali[c("DIRECTORIO", "SECUENCIA_ENCUESTA", "SECUENCIA_P", "ORDEN",
+                                      "I_HOGAR", "I_UGASTO", "PERCAPITA", "I_OU")]
+
+  ###############################
+  ## Cálculo del ingreso para  ##
+  ##       cada hogar          ##
+  ###############################
+  # construir id
+  servicios_cali_1$id = paste0(servicios_cali$DIRECTORIO,
+                               "-",servicios_cali$ORDEN)
+
+  # ingresos hogares
+  hogar_ingresos = servicios_cali_1[c("id", "I_HOGAR")]
+
+  ###########################################
+  ## Cálculo del gasto total y  gasto      ##
+  ##   en alimentación para cada hogar     ##
+  ###########################################
+
+  # construir id
+  gastos_hogares_cali_1$id = paste0(gastos_hogares_cali_1$DIRECTORIO,
+                                    "-",gastos_hogares_cali_1$SECUENCIA_P)
+
+  # reemplazar NA por 0 en las variables de gasto
+  gastos_hogares_cali_1$P3204S1[is.na(gastos_hogares_cali_1$P3204S1)] = 0
+  gastos_hogares_cali_1$P3204S2[is.na(gastos_hogares_cali_1$P3204S2)] = 0
+
+  # construir base de datos de recepción
+  hogar_gastos = data.frame(levels(as.factor(gastos_hogares_cali_1$id)))
+  hogar_gastos$gasto_total = NA
+  hogar_gastos$gasto_alimentos = NA
+  colnames(hogar_gastos) = c("id", "gasto_total", "gasto_alimentos")
+
+  for (k in 1:nrow(hogar_gastos)) {
+    # bucle para gasto total
+    df_1 = data.frame()
+    df_1 = gastos_hogares_cali_1 %>% filter(id %in% hogar_gastos$id[k])
+    hogar_gastos$gasto_total[k] = sum(df_1$P3204S1) + sum(df_1$P3204S2)
+    #bucle para gasto en alimentos
+    df_2 = df_1 %>% filter(P3204 %in% c(1:26,32))
+    hogar_gastos$gasto_alimentos[k] = sum(df_2$P3204S1) + sum(df_2$P3204S2)
+  }
+
+  ###################################
+  ## Cálculo de las proporciones   ##
+  ## (desde el ingreso y el gasto) ##
+  ###################################
+
+  # recuperar el factor de expansión
+  hogar_gastos_dep = merge(hogar_gastos, gastos_hogares_cali_1[c("id","FEX_C")], by = "id")
+  hogar_gastos_dep = hogar_gastos_dep[!duplicated(hogar_gastos_dep),]
+
+  # eliminar valores nulos en alimentación
+  hogar_gastos_dep = hogar_gastos_dep %>% filter(gasto_alimentos != 0)
+
+  # merge gastos-ingresos
+  gastos_ingresos = merge(hogar_gastos_dep, hogar_ingresos, by = "id")
+
+  # implementación del factor de expansión
+
+  gastos_ingresos_exp = as.data.frame(matrix(ncol = ncol(gastos_ingresos)))
+  colnames(gastos_ingresos_exp) = colnames(gastos_ingresos)
+
+
+
+  gastos_ingresos_exp <- gastos_ingresos %>%
+    group_by(row_index = row_number()) %>%
+    dplyr::slice(rep(row_number(), times = FEX_C)) %>%
+    ungroup() %>%
+    na.omit()
+
+
+  # proporción del gasto
+  gastos_ingresos_exp$share_gasto = gastos_ingresos_exp$gasto_alimentos/gastos_ingresos_exp$gasto_total
+
+  # Nota: los resultados para la proporción del ingresos no tiene resultados realistas
+
+  ############
+  ## Ad hoc ##
+  ############
+
+  # eliminar gastos e ingresos nulos
+  gastos_ingresos_exp = gastos_ingresos_exp %>% filter(I_HOGAR != 0)
+  gastos_ingresos_exp = gastos_ingresos_exp %>% filter(gasto_total != 0)
+
+  ############
+  ## Ad hoc ##
+  ############
+
+  deciles_ingresos = quantile(gastos_ingresos_exp$I_HOGAR,
+                              probs = seq(0.1,1, by = 0.1))
+  # clasificación por deciles
+  gastos_ingresos_exp = gastos_ingresos_exp %>% mutate(deciles = cut(I_HOGAR,
+                                                                     c(min(gastos_ingresos_exp$I_HOGAR)
+                                                                       , as.numeric(deciles_ingresos)),
+                                                                     c("decil 1", "decil 2", "decil 3",
+                                                                       "decil 4", "decil 5", "decil 6",
+                                                                       "decil 7", "decil 8", "decil 9",
+                                                                       "decil 10")))
+
+  # calculo de proporciones medias del gasto en alimentacion
+
+  mean_share = data.frame(c("decil 1", "decil 2", "decil 3",
+                            "decil 4", "decil 5", "decil 6",
+                            "decil 7", "decil 8", "decil 9",
+                            "decil 10"))
+  colnames(mean_share) = "decil"
+  mean_share$share = NA
+
+  for (i in 1:nrow(mean_share)) {
+    df = gastos_ingresos_exp %>% filter(deciles %in% mean_share$decil[i])
+    mean_share$share[i] = mean(df$share_gasto)
+  }
+
+  # presentación de proporción media
+
+  deciles_gasto = data.frame(levels(as.factor(dataset_def_deciles$deciles)))
+  colnames(deciles_gasto) = "deciles"
+  deciles_gasto$share = mean_share$share
+
+  dataset_def_deciles$id_aux = c(1:nrow(dataset_def_deciles))
+  dataset_def_deciles = merge(dataset_def_deciles, deciles_gasto, by = "deciles", all.x = TRUE)
+  dataset_def_deciles = dataset_def_deciles[order(dataset_def_deciles$id_aux),]
+  dataset_def_deciles = dataset_def_deciles[setdiff(colnames(dataset_def_deciles), "id_aux")]
+  # calcular ingreso dedicado a alimentacion
+  dataset_def_deciles$ingreso_alimentos = dataset_def_deciles$share*dataset_def_deciles$ingresos
+  dataset_def_deciles$ingreso_alimentos_per_capita = dataset_def_deciles$ingreso_alimentos/dataset_def_deciles$p6008
+
+
+  #-------------------------------------------------#
+  #               Tabla de resumen:                 #
+  #    ingreso (mean & max.) y gasto (mean & max.)  #
+  #-------------------------------------------------#
+
+  # Hallar el ingreso promedio por decil
+  deciles_grupos = c("Decil 1", "Decil 2",
+                     "Decil 3", "Decil 4",
+                     "Decil 5", "Decil 6",
+                     "Decil 7", "Decil 8",
+                     "Decil 9", "Decil 10")
+
+
+  mean_income = data.frame(deciles_grupos)
+  mean_income$ingreso_prom = NA
+  mean_income$size_prom = NA
+  mean_income$n = NA
+  mean_income$min_ing_pc = NA
+  mean_income$max_ing_pc = NA
+  mean_income$ing_per_capita_prom = NA
+
+  mean_income$share = NA
+
+  mean_income$food = NA
+
+  mean_income$min_food_pc = NA
+  mean_income$max_food_pc = NA
+  mean_income$food_per_capita_prom = NA
+
+
+
+  # NOTA: LOS PROMEDIOS FUERON CALCULADOS CON PREVIA EXPANSIÓN
+  for (k in 1:length(deciles_grupos)) {
+    df = data.frame()
+    df = dataset_def_deciles  %>% filter(deciles  %in% deciles_grupos[k])
+    y_1 = which(mean_income$deciles_grupos == deciles_grupos[k])
+
+
+    mean_income$ingreso_prom[y_1] = mean(df$ingresos)
+
+    mean_income$size_prom[y_1] = mean(df$P6008)
+
+    mean_income$n[y_1] = nrow(df)
+
+    mean_income$min_ing_pc[y_1] = min(df$per_capita)
+
+    mean_income$max_ing_pc[y_1] = max(df$per_capita)
+
+    mean_income$ing_per_capita_prom[y_1] = mean(df$per_capita)
+
+    mean_income$share[y_1] = as.numeric(levels(as.factor(df$share)))
+
+    mean_income$food[y_1] = mean(df$ingreso_alimentos)
+
+    mean_income$min_food_pc[y_1] = min(df$ingreso_alimentos_per_capita)
+    mean_income$max_food_pc[y_1] = max(df$ingreso_alimentos_per_capita)
+    mean_income$food_per_capita_prom[y_1] = mean(df$ingreso_alimentos_per_capita)
+
+  }
+
+  mean_income_deciles = mean_income
+
+
+
+  #-----------------------------#
+  # FIN    DEL MÓDULO 4 ORGINAL #
+  #-----------------------------#
+  Sys.sleep(1);cat("Módulo 5:  Reatroalimentación con el paquete Foodprice ")
+
+  invisible(capture.output({
+    #----------------------------------------------------------------------------------#
+    #    Modulo 3: Reatroalimentación con el paquete Foodprice                        #
+    #----------------------------------------------------------------------------------#
+
+    #-----------------------------#
+    # INICIO DEL MÓDULO 5 ORGINAL #
+    #-----------------------------#
+
+
+
+
+    Data_mes_año=Foodprice::DataCol(Month = Month, Year = Year, City = City)
+
+    model_household <- data.frame(
+      Household = c(1, 1, 1),
+      Person = c(1, 2, 3),
+      Sex = c(0, 1, 1),
+      Demo_Group = c("31 a 50 años", "31 a 50 años", "9 a 13 años")
+    )
+
+    modelo_1=Foodprice::CoCA(data=Data_mes_año,EER = EER)$cost
+    modelo_2=Foodprice::CoNA(data=Data_mes_año,EER_LL=EER_LL,UL=UL)$cost
+    modelo_3=Foodprice::CoRD(data = Data_mes_año,diverse = diverse,serv = serv)$cost
+
+  }))
+
+  #-----------------------------#
+  # Modelo:COCA- costo hogar Rep#
+  #-----------------------------#
+
+
+
+  model_dieta_1 = merge(model_household, modelo_1[c("Demo_Group", "Sex", "cost_day")],
+                        by = c("Demo_Group", "Sex"),
+                        all.x = TRUE, all.y = FALSE)
+
+  model_dieta_1$hogar_total = sum(as.numeric(model_dieta_1$cost_day))
+  model_dieta_1$per_capita = model_dieta_1$hogar_total/nrow(model_dieta_1)
+
+
+
+  #-----------------------------#
+  # Modelo:CONA- costo hogar Rep#
+  #-----------------------------#
+
+
+
+
+  model_dieta_2 = merge(model_household, modelo_2[c("Demo_Group", "Sex", "cost_day")],
+                        by = c("Demo_Group", "Sex"),
+                        all.x = TRUE, all.y = FALSE)
+
+  model_dieta_2$hogar_total = sum(as.numeric(model_dieta_2$cost_day))
+  model_dieta_2$per_capita = model_dieta_2$hogar_total/nrow(model_dieta_2)
+
+
+
+  #-----------------------------#
+  # Modelo:CORD- costo hogar Rep#
+  #-----------------------------#
+
+  model_household_3 <- data.frame(
+    Household = c(1, 1, 1),
+    Person = c(1, 2, 3),
+    Sex = c(0, 1, 1),
+    Demo_Group = c("31-50 años", "31-50 años", "9-13 años")
+  )
+
+  model_dieta_3 = merge(model_household_3, modelo_3[c("Demo_Group", "Sex", "cost_day")],
+                        by = c("Demo_Group", "Sex"),
+                        all.x = TRUE, all.y = FALSE)
+
+  model_dieta_3$hogar_total = sum(as.numeric(model_dieta_3$cost_day))
+  model_dieta_3$per_capita = model_dieta_3$hogar_total/nrow(model_dieta_3)
+
+  #-------------------------------#
+  # Calcular costo anual y mensual #
+  #--------------------------------#
+
+
+
+  model_dieta_1$per_capita_year = model_dieta_1$per_capita*365
+  model_dieta_2$per_capita_year = model_dieta_2$per_capita*365
+  model_dieta_3$per_capita_year = model_dieta_3$per_capita*365
+
+
+  model_dieta_1$per_capita_month = model_dieta_1$per_capita*30
+  model_dieta_2$per_capita_month = model_dieta_2$per_capita*30
+  model_dieta_3$per_capita_month = model_dieta_3$per_capita*30
+
+  cat("     Finalizado ✓ \n")
+
+
+  #-----------------------------#
+  # FIN    DEL MÓDULO 5 ORGINAL # FALTA SIMPLIFICAR Y GENERALIZAR
+  #-----------------------------#
+
+  #----------------------------------------------------------------------------------#
+  #    Modulo 4: Cálculo de indicadores de asequibilida                              #
+  #----------------------------------------------------------------------------------#
+  #-----------------------------#
+  # INICIO DEL MÓDULO 6 ORGINAL #
+  #-----------------------------#
+
+  Sys.sleep(1);cat("Módulo 6: Cálculo de indicadores de asequibilidad")
+
+  dataset_def_deciles$ingreso_alimentos_per_capita=dataset_def_deciles$ingreso_alimentos/dataset_def_deciles$fex_c18
+  # Calcular la proporción para cada decil
+  dataset_def_deciles$per_capita_year = dataset_def_deciles$ingreso_alimentos_per_capita*12
+
+
+  outcome_1_list = list()
+  length(outcome_1_list) = 10
+
+  z <- as.numeric(levels(as.factor(model_dieta_1$per_capita_year)))
+
+  outcome_1_list <- lapply(deciles_grupos, function(decile) {
+    # Filtrar dataset_def_deciles una vez para el decil actual
+    df_y <- dataset_def_deciles %>% filter(deciles %in% decile)
+
+    # Crear dummy vectorizado
+    df_y$dummy <- ifelse(df_y$per_capita_year < z, 1, 0)
+
+    # Filtrar df_y para obtener solo filas donde dummy es 1
+    df_z <- df_y %>% filter(dummy == 1)
+
+    # Calcular brecha relativa y su cuadrado
+    df_z$brecha_rel <- (z - df_z$per_capita_year) / z
+    df_z$brecha_rel_sqr <- df_z$brecha_rel^2
+
+    # Calcular los índices
+    N <- nrow(df_y)
+    rate <- (nrow(df_z) / N) * 100
+    gap <- sum(df_z$brecha_rel) / N
+    severity <- sum(df_z$brecha_rel_sqr) / N
+
+    # Crear el dataframe de salida
+    df_w <- data.frame(deciles = decile, rate = rate, gap = gap, severity = severity)
+
+    return(df_w)
+  })
+
+  # Asignar nombres a la lista de salida
+  names(outcome_1_list) <- deciles_grupos
+
+  calculate_outcome <- function(dataset, model, deciles_grupos) {
+    z <- as.numeric(levels(as.factor(model$per_capita_year)))
+    outcome_list <- list()
+
+    for (j in 1:length(deciles_grupos)) {
+      df_y <- dataset %>% filter(deciles %in% deciles_grupos[j])
+
+      # Crear dummy vectorizado
+      df_y$dummy <- ifelse(df_y$per_capita_year < z, 1, 0)
+
+      df_z <- df_y %>% filter(dummy == 1)
+
+      df_z$brecha_rel <- (z - df_z$per_capita_year) / z
+      df_z$brecha_rel_sqr <- df_z$brecha_rel^2
+
+      N <- nrow(df_y)
+      rate <- (nrow(df_z) / N) * 100
+      gap <- sum(df_z$brecha_rel) / N
+      severity <- sum(df_z$brecha_rel_sqr) / N
+
+      df_w <- data.frame(deciles = deciles_grupos[j], rate = rate, gap = gap, severity = severity)
+
+      outcome_list[[j]] <- df_w
+    }
+
+    names(outcome_list) <- deciles_grupos
+    return(outcome_list)
+  }
+
+  # Calcular resultados para los tres escenarios
+  outcome_1_list <- calculate_outcome(dataset_def_deciles, model_dieta_1, deciles_grupos)
+  outcome_2_list <- calculate_outcome(dataset_def_deciles, model_dieta_2, deciles_grupos)
+  outcome_3_list <- calculate_outcome(dataset_def_deciles, model_dieta_3, deciles_grupos)
+
+  # Combinar resultados para cada escenario
+  poverty_1_outcome <- do.call(rbind, outcome_1_list)
+  poverty_2_outcome <- do.call(rbind, outcome_2_list)
+  poverty_3_outcome <- do.call(rbind, outcome_3_list)
+
+
+
+  # Agregar resultados finales en un DF
+  poverty_1_outcome <- poverty_1_outcome %>%
+    mutate(model = "CoCA")
+
+  poverty_2_outcome <- poverty_2_outcome %>%
+    mutate(model = "CoNA")
+
+  poverty_3_outcome <- poverty_3_outcome %>%
+    mutate(model = "CoRD")
+
+  # Unir los dataframes en uno solo
+  poverty_outcome <- bind_rows(poverty_1_outcome, poverty_2_outcome, poverty_3_outcome)
+
+
+  #--------------------------------------------------#
+  # Razones costo m?nimo e ingreso en alimentación   #
+  #--------------------------------------------------#
+
+
+  umbral_1 =as.numeric(levels(as.factor(model_dieta_1$per_capita_month)))
+  umbral_2 =as.numeric(levels(as.factor(model_dieta_2$per_capita_month)))
+  umbral_3 =as.numeric(levels(as.factor(model_dieta_3$per_capita_month)))
+
+
+  mean_income_food = mean_income_deciles[c("deciles_grupos", "food_per_capita_prom")]
+
+  mean_income_food$umbral_1 = umbral_1
+  mean_income_food$umbral_2= umbral_2
+  mean_income_food$umbral_3= umbral_3
+
+  mean_income_food$ratio_1 = mean_income_food$umbral_1/mean_income_food$food_per_capita_prom
+  mean_income_food$ratio_2 = mean_income_food$umbral_2/mean_income_food$food_per_capita_prom
+  mean_income_food$ratio_3 = mean_income_food$umbral_3/mean_income_food$food_per_capita_prom
+  names(mean_income_food)= c("decile_groups", "food_per_capita_avg", "threshold_1", "threshold_2", "threshold_3", "ratio_1", "ratio_2", "ratio_3")
+
+  #-----------------------------#
+  # FIN    DEL MÓDULO 6 ORGINAL # FALTA SIMPLIFICAR Y GENERALIZAR
+  #-----------------------------#
+
+  # Guardando las salidas como lista
+
+  Resultados=list(poverty_outcome,mean_income_food);names(Resultados)=c("Poverty_outcome","Mean_income_food")
+
+  # retorno
+
+  Sys.sleep(1);cat("     Finalizado ✓ \n")
+
+  return(invisible(Resultados))
+
 
 }
 
-x=Modulos(Month=1, Year=2022, City="Cali")
+x=Modulos(Month=1, Year=2022,City="Cali")
+View(x$Poverty_outcome)
 
-x$outlier_impa
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+View(x$Mean_income_food)
 
 
 
